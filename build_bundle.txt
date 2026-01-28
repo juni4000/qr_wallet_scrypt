@@ -1,0 +1,9 @@
+  1. Updated build_bundle.js with proper fixes from bundle.js:                                         
+    - Added platform: 'browser'                                                                        
+    - Added alias plugin to force @scrypt-inc/bsv to use dist/main.js                                  
+    - Added alias plugin for assert module                                                             
+    - Disabled assert in polyfillNode polyfills                                                        
+    - Added mainFields: ['main', 'module']                                                             
+  2. Rebuilt the bundle using the corrected build script                                               
+  3. The new bundle uses Tamagochi_v1.ts with merkle tree validation for items (supports all 37 items  
+  including MOVE_ACTION=35 and EAT_ACTION=36)   

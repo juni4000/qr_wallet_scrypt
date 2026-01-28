@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>TxInBlock Test</title>
+    <script src="scrypt_bundle.js"></script>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a2e; color: #eee; }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+        button { padding: 10px 20px; margin: 10px; cursor: pointer; }
+        pre { background: #0f0f23; padding: 15px; border-radius: 5px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>TxInBlock Verification Test</h1>
+    <p>Testing transaction: <code>b79d083378291b0064f865dcb02d761e9a6c03384a51a57793d96a99549e6d4f</code></p>
+
+    <button onclick="runTest()">Run TxInBlock Test</button>
+
+    <h2>Results:</h2>
+    <pre id="output">Click "Run TxInBlock Test" to start...</pre>
+
+    <script>
+        const txId = 'b79d083378291b0064f865dcb02d761e9a6c03384a51a57793d96a99549e6d4f';
+        const output = document.getElementById('output');
+
+        function log(msg) {
+            output.textContent += msg + '\n';
+        }
+
+        function reverseHex(hex) {
+            return hex.match(/.{1,2}/g).reverse().join('');
+        }
+
+        // Local implementation of txInBlock verification (same algorithm as scrypt-ts-lib)
+        function localTxInBlock(txidLE, merkleRootLE, proof, depth) {
+            // MerklePath constants from scrypt-ts-lib
+            const INVALID_NODE = 0n;
+            const LEFT_NODE = 1n;  // sibling is on Left
+            const RIGHT_NODE = 2n; // sibling is on Right
+
+            let currentHash = txidLE; // Already LE hex string
+
+            for (let i = 0; i < depth; i++) {
+                const node = proof[i];
+                if (node.pos === INVALID_NODE) continue;
+
+                const sibling = node.hash; // LE hex string
+
+                let combined;
+                if (node.pos === RIGHT_NODE) {
+                    // Sibling is Right, I am Left -> me + sibling
+                    combined = currentHash + sibling;
+                } else if (node.pos === LEFT_NODE) {
+                    // Sibling is Left, I am Right -> sibling + me
+                    combined = sibling + currentHash;
+                } else {
+                    continue;
+                }
+
+                // Double SHA256
+                const bsv = scrypt.bsv;
+                const buf = bsv.deps.Buffer.from(combined, 'hex');
+                const h1 = bsv.crypto.Hash.sha256(buf);
+                const h2 = bsv.crypto.Hash.sha256(h1);
+                currentHash = h2.toString('hex');
+            }
+
+            // Compare calculated root with header's merkle root
+            const matches = currentHash === merkleRootLE;
+            log(`  Calculated root: ${currentHash}`);
+            log(`  Header root:     ${merkleRootLE}`);
+            return matches;
+        }
+
+        async function fetchBlockHeader(txId) {
+            // Get tx to find block hash
+            const txResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/tx/hash/${txId}`);
+            const txData = await txResp.json();
+            const blockHash = txData.blockhash;
+
+            log(`Block hash: ${blockHash}`);
+
+            // Get block header
+            const blockResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/block/${blockHash}`);
+            const block = await blockResp.json();
+
+            // Return raw values for local verification
+            // merkleRoot needs to be reversed (WOC returns BE, we need LE)
+            return {
+                merkleRootLE: reverseHex(block.merkleroot), // LE hex string for local verification
+                prevBlockHash: block.previousblockhash, // NOT reversed
+                // Also return scrypt-formatted header for contract use
+                scryptHeader: {
+                    version: scrypt.int2ByteString(BigInt(block.version), 4n),
+                    prevBlockHash: scrypt.Sha256(scrypt.toByteString(block.previousblockhash, false)),
+                    merkleRoot: scrypt.Sha256(scrypt.toByteString(reverseHex(block.merkleroot), false)),
+                    time: BigInt(block.time),
+                    bits: scrypt.toByteString(block.bits, false),
+                    nonce: BigInt(block.nonce)
+                }
+            };
+        }
+
+        async function fetchMerkleProof(txId) {
+            const resp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/tx/${txId}/proof/tsc`);
+            const dataArr = await resp.json();
+
+            if (!dataArr || dataArr.length === 0) throw new Error("No merkle proof found");
+
+            const proofData = dataArr[0];
+            const nodes = proofData.nodes;
+            let index = proofData.index;
+
+            log(`TSC proof index: ${proofData.index}`);
+            log(`TSC proof nodes: ${nodes.length}`);
+
+            // scrypt-ts-lib MerklePath constants
+            const INVALID_NODE = 0n;
+            const LEFT_NODE = 1n;
+            const RIGHT_NODE = 2n;
+
+            const path = [];
+
+            for (const nodeHash of nodes) {
+                const pos = (index & 1) === 0 ? RIGHT_NODE : LEFT_NODE;
+                // Store raw LE hex string for local verification
+                path.push({
+                    hash: reverseHex(nodeHash), // LE hex string
+                    pos: pos
+                });
+                index = Math.floor(index / 2);
+            }
+
+            while (path.length < 32) {
+                path.push({
+                    hash: '00'.repeat(32),
+                    pos: INVALID_NODE
+                });
+            }
+
+            return { path, depth: nodes.length };
+        }
+
+        async function runTest() {
+            output.textContent = '';
+            log('=== TxInBlock Verification Test ===\n');
+
+            try {
+                log('Fetching block header...');
+                const headerData = await fetchBlockHeader(txId);
+                log(`Header merkleRoot (LE): ${headerData.merkleRootLE}`);
+                log(`Header prevBlockHash: ${headerData.prevBlockHash}\n`);
+
+                log('Fetching merkle proof...');
+                const { path, depth } = await fetchMerkleProof(txId);
+
+                log(`\nFirst 5 proof nodes:`);
+                for (let i = 0; i < Math.min(5, depth); i++) {
+                    log(`  [${i}] pos: ${path[i].pos}, hash: ${path[i].hash.substring(0, 16)}...`);
+                }
+
+                // Prepare txid for txInBlock (reversed to LE)
+                const txidLE = reverseHex(txId);
+                log(`\nTxId (LE): ${txidLE}`);
+
+                // Implement txInBlock verification locally (same algorithm as scrypt-ts-lib Blockchain.txInBlock)
+                log(`\nRunning local txInBlock verification with depth=${depth}...`);
+                const result = localTxInBlock(txidLE, headerData.merkleRootLE, path, depth);
+
+                log(`\n===================================`);
+                if (result) {
+                    log(`RESULT: SUCCESS - txInBlock = true`);
+                    output.classList.add('success');
+                    output.classList.remove('error');
+                } else {
+                    log(`RESULT: FAILED - txInBlock = false`);
+                    output.classList.add('error');
+                    output.classList.remove('success');
+                }
+                log(`===================================`);
+
+            } catch (e) {
+                log(`\nERROR: ${e.message}`);
+                console.error(e);
+                output.classList.add('error');
+            }
+        }
+    </script>
+</body>
+</html>

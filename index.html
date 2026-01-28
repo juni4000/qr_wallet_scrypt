@@ -1,0 +1,3709 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrypt Contract Test</title>
+    <!-- Load the bundled scrypt code -->
+    <script src="scrypt_bundle.js?v=1769621826"></script>
+    <script src="artifact.js?v=1769621826"></script>
+    <style>
+        :root {
+            --bg-primary: #eef2f5;
+            --bg-secondary: white;
+            --bg-tertiary: #fff;
+            --text-primary: #333;
+            --text-secondary: #666;
+            --border-color: #ddd;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --input-bg: white;
+            --input-border: #ccc;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-tertiary: #0f3460;
+            --text-primary: #e6e6e6;
+            --text-secondary: #a0aec0;
+            --border-color: #3a3a5c;
+            --shadow-color: rgba(0, 0, 0, 0.3);
+            --input-bg: #2d3748;
+            --input-border: #4a5568;
+        }
+
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: var(--bg-secondary);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px var(--shadow-color);
+            transition: background 0.3s ease;
+        }
+
+        h1 {
+            margin-top: 0;
+            color: var(--text-primary);
+        }
+
+        h3 {
+            color: var(--text-primary);
+        }
+
+        .group {
+            margin-bottom: 20px;
+            border: 1px solid var(--border-color);
+            padding: 15px;
+            border-radius: 6px;
+            background: var(--bg-secondary);
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+
+        .group h3 {
+            margin-top: 0;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+
+        input[type="text"],
+        select {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+            border: 1px solid var(--input-border);
+            border-radius: 4px;
+            background: var(--input-bg);
+            color: var(--text-primary);
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+
+        input[type="text"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        button {
+            padding: 10px 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        #logs {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        /* Map Styles */
+        #map-container {
+            display: grid;
+            grid-template-columns: repeat(4, 100px);
+            grid-template-rows: repeat(4, 100px);
+            gap: 10px;
+            margin: 20px auto;
+            width: fit-content;
+            background: var(--bg-tertiary);
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px var(--shadow-color);
+            position: relative;
+            transition: background 0.3s ease;
+        }
+
+        .location {
+            width: 100px;
+            height: 100px;
+            background-size: cover;
+            border-radius: 8px;
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .location:hover {
+            transform: scale(1.05);
+            z-index: 2;
+        }
+
+        .location.current {
+            border-color: #007bff;
+            box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+        }
+
+        .location-name {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            font-size: 10px;
+            text-align: center;
+            padding: 2px 0;
+            border-bottom-left-radius: 6px;
+            border-bottom-right-radius: 6px;
+        }
+
+        .work-indicator {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 15px;
+            height: 15px;
+            background: #ffc107;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        #character {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+            transition: all 0.5s ease-in-out;
+            z-index: 10;
+        }
+
+        /* Flags Panel Styles */
+        .flags-panel {
+            background: linear-gradient(145deg, #2d3748, #1a202c);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 15px;
+        }
+
+        .flags-panel h5 {
+            margin: 0 0 10px 0;
+            color: #a0aec0;
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .flags-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .flag-item {
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3em;
+            transition: all 0.3s ease;
+            cursor: help;
+        }
+
+        .flag-item:hover {
+            transform: scale(1.15);
+            z-index: 2;
+        }
+
+        .flag-item.active {
+            background: #2d3748;
+            border: 2px solid #48bb78;
+            opacity: 1;
+            box-shadow: 0 0 10px rgba(72, 187, 120, 0.3);
+        }
+
+        .flag-item.inactive {
+            background: #1a202c;
+            border: 2px solid #4a5568;
+            opacity: 0.3;
+            filter: grayscale(100%);
+        }
+
+        .effect-item {
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+        }
+
+        .expiration-item {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .expiration-item.warning {
+            background: #744210;
+            border: 1px solid #d69e2e;
+            animation: expireWarn 1s infinite;
+        }
+
+        @keyframes expireWarn {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        @keyframes flagPulse {
+
+            0%,
+            100% {
+                box-shadow: 0 0 10px rgba(72, 187, 120, 0.3);
+            }
+
+            50% {
+                box-shadow: 0 0 20px rgba(72, 187, 120, 0.6);
+            }
+        }
+
+        /* Dark Mode Toggle */
+        .theme-toggle {
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--bg-secondary);
+            padding: 8px 12px;
+            border-radius: 20px;
+            box-shadow: 0 2px 10px var(--shadow-color);
+            border: 1px solid var(--border-color);
+            transition: background 0.3s ease;
+        }
+
+        .theme-toggle-label {
+            font-size: 0.85em;
+            color: var(--text-secondary);
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.3s;
+            border-radius: 26px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "☀️";
+            font-size: 14px;
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .toggle-switch input:checked+.toggle-slider {
+            background-color: #4a5568;
+        }
+
+        .toggle-switch input:checked+.toggle-slider:before {
+            transform: translateX(24px);
+            content: "🌙";
+        }
+
+        /* Additional dark mode adjustments */
+        [data-theme="dark"] #logs {
+            background: #0d1117;
+        }
+
+        [data-theme="dark"] .location {
+            border-color: #4a5568;
+        }
+
+        [data-theme="dark"] .location.current {
+            border-color: #3b82f6;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        }
+
+        [data-theme="dark"] .location-name {
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        [data-theme="dark"] p,
+        [data-theme="dark"] span {
+            color: var(--text-secondary);
+        }
+
+        [data-theme="dark"] #historyList {
+            color: var(--text-secondary);
+        }
+
+        /* History View link - yellow in dark mode */
+        [data-theme="dark"] #historyList a {
+            color: #fbbf24 !important;
+        }
+
+        /* Stats section - proper text colors in dark mode */
+        [data-theme="dark"] #gameState {
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] #gameState strong {
+            color: var(--text-primary);
+        }
+
+        [data-theme="dark"] #gameState div {
+            color: var(--text-secondary);
+        }
+
+        [data-theme="dark"] #gameState h4 {
+            color: var(--text-primary) !important;
+        }
+
+        /* Location action buttons - darker text for actions in dark mode if needed, 
+           or ensure contrast. User requested "actions font dark". 
+           Let's force dark text on the buttons as requested. */
+        #locationActions button {
+            color: #333 !important;
+            /* Force dark text as requested */
+            text-shadow: none;
+            font-weight: bold;
+        }
+
+        /* Ensure disabled buttons look disabled */
+        #locationActions button:disabled {
+            color: #666 !important;
+            opacity: 0.6;
+            background: #ccc !important;
+            box-shadow: none !important;
+        }
+
+        /* Predicted state in dark mode */
+        [data-theme="dark"] #gameState>div {
+            background: #1e293b !important;
+            border-color: #334155 !important;
+        }
+
+        /* Market Panel */
+        .market-panel {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.03);
+            border-radius: 8px;
+            border: 1px dashed var(--border-color);
+        }
+
+        /* Compact stats styling */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+            font-size: 0.85em;
+        }
+
+        .stats-item {
+            padding: 6px 8px;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        [data-theme="dark"] .stats-item {
+            background: rgba(50, 50, 100, 0.4);
+            /* darker, slightly blueish tint */
+            color: #e2e8f0;
+        }
+
+        [data-theme="dark"] .stats-item .stat-label {
+            color: #94a3b8;
+        }
+
+        /* Hours pie chart in map */
+        .hours-pie {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: conic-gradient(#22c55e var(--hours-pct), #374151 var(--hours-pct));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 5;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+        }
+
+        .hours-pie-inner {
+            width: 50px;
+            height: 50px;
+            background: var(--bg-tertiary);
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9em;
+            font-weight: bold;
+            color: var(--text-primary);
+        }
+
+        .hours-pie-inner .hours-value {
+            font-size: 1.3em;
+            line-height: 1;
+        }
+
+        .hours-pie-inner .hours-label {
+            font-size: 0.6em;
+            opacity: 0.7;
+            font-weight: normal;
+        }
+
+        /* Block Wait Panel / Overlay */
+        .block-wait-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            /* Dark semi-transparent */
+            z-index: 100;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px;
+            /* Match map container */
+
+            /* Animation */
+            transform: translateY(100%);
+            transition: transform 0.5s ease-in-out;
+            pointer-events: none;
+            /* Let clicks pass when hidden */
+            opacity: 0;
+        }
+
+        .block-wait-overlay.active {
+            transform: translateY(0);
+            pointer-events: auto;
+            opacity: 1;
+        }
+
+        .block-wait-content {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 12px;
+            border: 2px solid #3b82f6;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+            max-width: 80%;
+        }
+
+        .pulse-loader {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, .3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 10px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Slide mechanics for existing panels */
+        .panel-slide {
+            transition: transform 0.5s ease;
+        }
+
+        .slide-out-left {
+            transform: translateX(-110%);
+        }
+
+        .slide-out-right {
+            transform: translateX(110%);
+        }
+
+        /* Improved Queue Styling */
+        .queue-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.9em;
+            padding: 5px 10px;
+            border-radius: 15px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s;
+        }
+
+        .queue-item:hover {
+            transform: translateY(-1px);
+        }
+
+        [data-theme="dark"] .queue-item {
+            background-color: #2d3748 !important;
+            border-color: #4a5568 !important;
+            color: #e2e8f0 !important;
+        }
+
+        /* Improved Stats Block in Dark Mode */
+        [data-theme="dark"] .stats-item {
+            background: #2d3748;
+            border: 1px solid #4a5568;
+        }
+
+        /* Action Button Text Contrast */
+        .action-btn {
+            color: white !important;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        /* New Day Panel Styles */
+        .new-day-panel {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 2px solid #4ade80;
+            border-radius: 12px;
+            padding: 15px;
+            margin: 15px 0;
+            animation: newDayGlow 2s ease-in-out infinite;
+        }
+
+        @keyframes newDayGlow {
+
+            0%,
+            100% {
+                box-shadow: 0 0 10px rgba(74, 222, 128, 0.3);
+            }
+
+            50% {
+                box-shadow: 0 0 20px rgba(74, 222, 128, 0.6);
+            }
+        }
+
+        @keyframes fadeOut {
+            from {
+                opacity: 1;
+                transform: translateY(0);
+            }
+
+            to {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+        }
+
+        .new-day-panel h4 {
+            color: #4ade80;
+            margin: 0 0 12px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.1em;
+        }
+
+        .new-day-panel .state-changes {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+        }
+
+        .new-day-panel .state-change-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 8px 12px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .new-day-panel .state-change-item .icon {
+            font-size: 1.4em;
+        }
+
+        .new-day-panel .state-change-item .label {
+            color: #a0aec0;
+            font-size: 0.75em;
+            display: block;
+        }
+
+        .new-day-panel .state-change-item .value {
+            color: #e6e6e6;
+            font-weight: bold;
+        }
+
+        .new-day-panel .state-change-item .change {
+            font-size: 0.85em;
+            margin-left: auto;
+        }
+
+        .new-day-panel .state-change-item .change.positive {
+            color: #4ade80;
+        }
+
+        .new-day-panel .state-change-item .change.negative {
+            color: #f87171;
+        }
+
+        .new-day-panel .tx-info {
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 0.8em;
+            color: #a0aec0;
+        }
+
+        .new-day-panel .tx-info a {
+            color: #60a5fa;
+            text-decoration: none;
+        }
+
+        .new-day-panel .tx-info a:hover {
+            text-decoration: underline;
+        }
+
+        /* Dark backgrounds for wallet stats and action queue */
+        #queueContainer {
+            background: #1a1a2e !important;
+            border-color: #3a3a5c !important;
+            color: #e6e6e6 !important;
+        }
+
+        #walletStatsDiv {
+            background: #1a1a2e !important;
+            border-color: #3a3a5c !important;
+            color: #e6e6e6 !important;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Dark Mode Toggle -->
+    <div class="theme-toggle">
+        <span class="theme-toggle-label">Theme</span>
+        <label class="toggle-switch">
+            <input type="checkbox" id="themeToggle" onchange="toggleTheme()">
+            <span class="toggle-slider"></span>
+        </label>
+    </div>
+
+    <div class="container">
+        <h1>Scrypt Contract Test: SneetexBSV</h1>
+
+        <div class="row" style="align-items: flex-start;">
+            <div style="flex: 1;">
+                <div class="group">
+                    <h3>1. Wallet Setup</h3>
+                    <label>WIF Private Key (Mainnet)</label>
+                    <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                        <input type="password" id="wifKey" value="Kzi1JSbeEeKNPrEgxqDJiVjfft7votscC5iHDef6gkBcbAk5RyCi"
+                            placeholder="Enter WIF Key" style="flex:1;">
+                        <button onclick="toggleKeyVisibility()"
+                            style="width: 40px; padding: 0; font-size: 1.2em;">👁️</button>
+                    </div>
+
+                    <label>Provider</label>
+                    <div style="display: flex; gap: 5px; align-items: center; margin-bottom: 10px;">
+                        <select id="providerSelect" style="flex:1;">
+                            <option value="taal">Taal (Mainnet)</option>
+                            <option value="whatsonchain">WhatsonChain (Mainnet)</option>
+                        </select>
+                        <button onclick="toggleApiKeyInput()" title="Set API Key"
+                            style="width: 35px; padding: 5px;">⚙️</button>
+                    </div>
+
+                    <div id="apiKeyContainer" style="display:none; margin-bottom: 10px;">
+                        <label style="font-size: 0.8em;">Custom API Key (Optional)</label>
+                        <input type="password" id="customApiKey" placeholder="Start with 'mainnet_...'">
+                    </div>
+
+                    <button onclick="initWallet()">Initialize Wallet</button>
+                    <p id="walletStatus">Not initialized</p>
+                </div>
+
+                <div class="group">
+                    <h3>2. Deploy Contract</h3>
+                    <button id="btnDeploy" onclick="deployContract()" disabled>Deploy Contract</button>
+                    <p>Current Contract ID: <span id="contractId">None</span></p>
+                </div>
+
+                <div class="group">
+                    <h3>History</h3>
+                    <ul id="historyList" style="max-height: 150px; overflow-y: auto; padding-left: 20px;">
+                        <!-- History items -->
+                    </ul>
+                    <div style="display: flex; gap: 10px;">
+                        <button onclick="clearHistory()"
+                            style="background: #dc3545; font-size: 0.8rem; padding: 5px 10px;">Clear History</button>
+                        <button id="btnScan" onclick="scanForContracts()"
+                            style="background: #17a2b8; font-size: 0.8rem; padding: 5px 10px;">Scan Wallet for
+                            Games</button>
+                    </div>
+                </div>
+
+                <div class="group">
+                    <h3>3. Stats</h3>
+                    <div id="gameState"></div>
+                </div>
+            </div>
+
+            <div style="flex: 1;">
+                <div id="map-container">
+                    <!-- Map items will be injected here -->
+                    <div id="character"></div>
+                    <!-- Hours Left Pie Chart -->
+                    <div class="hours-pie" id="hoursPie" style="--hours-pct: 100%;">
+                        <div class="hours-pie-inner">
+                            <span class="hours-value" id="hoursPieValue">24</span>
+                            <span class="hours-label">hrs left</span>
+                        </div>
+                    </div>
+
+                    <!-- NEW: Block Wait Overlay -->
+                    <div id="blockWaitOverlay" class="block-wait-overlay">
+                        <div class="block-wait-content">
+                            <h3 style="margin-top:0; color:#60a5fa;">🌙 Round Finished!</h3>
+                            <p style="font-size: 0.9em; margin-bottom: 20px; color: #cbd5e1;">
+                                Waiting for a new block to confirm your moves.<br>
+                                This prevents spam and prepares the next round.
+                            </p>
+
+                            <div id="blockCheckStatus"
+                                style="margin-bottom: 15px; font-size: 0.85em; color: #94a3b8; font-style: italic;">
+                                Checking blockchain...
+                            </div>
+
+                            <div style="margin-bottom: 20px;">
+                                <a id="overlayTxLink" href="#" target="_blank"
+                                    style="color: #60a5fa; text-decoration: underline; font-size: 0.9em;">View
+                                    Transaction</a>
+                            </div>
+
+                            <button id="btnNewDay" onclick="manualCheckTimeEvent()"
+                                style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); width: 100%; border: none; padding: 12px; border-radius: 8px; font-weight: bold; color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;">
+                                <span style="font-size: 1.2em;">🌅</span> Check & Start New Day
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="group" id="locationAppPanel">
+                    <h3>4. Location</h3>
+                    <div id="locationApp"
+                        style="min-height: 200px; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 12px; padding: 15px; position: relative; overflow: hidden;">
+                        <div id="locationHeader"
+                            style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                            <span id="locationIcon" style="font-size: 2.5em;">🏨</span>
+                            <div>
+                                <h4 id="locationTitle" style="margin: 0; color: #fff;">Hostel</h4>
+                                <small id="locationDesc" style="color: #8892b0;">Starting location</small>
+                            </div>
+                        </div>
+                        <div id="locationActions" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+                        <div id="locationInfo"
+                            style="margin-top: 15px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 0.85em; color: #8892b0;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="group">
+            <h3>Logs</h3>
+            <div id="logs"></div>
+        </div>
+    </div>
+
+    <script>
+        // Toggle Hidden Inputs
+        function toggleKeyVisibility() {
+            const el = document.getElementById('wifKey');
+            if (el.type === 'password') el.type = 'text';
+            else el.type = 'password';
+        }
+
+        function toggleApiKeyInput() {
+            const el = document.getElementById('apiKeyContainer');
+            el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }
+
+        // Theme Toggle Function
+        function toggleTheme() {
+            const html = document.documentElement;
+            const toggle = document.getElementById('themeToggle');
+            if (toggle.checked) {
+                html.setAttribute('data-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                html.removeAttribute('data-theme');
+                localStorage.setItem('theme', 'light');
+            }
+        }
+
+        // Initialize theme from localStorage
+        (function initTheme() {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                // Set toggle state after DOM ready
+                document.addEventListener('DOMContentLoaded', () => {
+                    const toggle = document.getElementById('themeToggle');
+                    if (toggle) toggle.checked = true;
+                });
+            }
+        })();
+
+        // Global variables
+        let signer;
+        let provider;
+        let contractInstance;
+        let currentTxId;
+        let currentDeploymentId = null; // Track the "Game ID" (genesis tx) for grouping
+
+        // Constants and Data
+        const LOCATIONS = [
+            { id: '00', name: 'BANK', image: 'images/bank.png', x: 0, y: 0 },
+            { id: '01', name: 'CLOTHES_SHOP', image: 'images/clothes.png', x: 1, y: 0 },
+            { id: '02', name: 'INSURANCE_BROKERS', image: 'images/insurance_brokers.png', x: 2, y: 0 },
+            { id: '03', name: 'HITECH', image: 'images/hitech.png', x: 3, y: 0 },
+            { id: '04', name: 'HOSTEL', image: 'images/hostel.png', x: 3, y: 1 },
+            { id: '05', name: 'FACTORY', image: 'images/factory.png', x: 3, y: 2 },
+            { id: '06', name: 'HEAD_HUNTERS', image: 'images/headhunters.png', x: 3, y: 3 },
+            { id: '07', name: 'HITECH_HOME', image: 'images/hitech_home.png', x: 2, y: 3 },
+            { id: '08', name: 'UNIVERSITY', image: 'images/university.png', x: 1, y: 3 },
+            { id: '09', name: 'FOOD', image: 'images/food.png', x: 0, y: 3 },
+            { id: '0a', name: 'CHINATOWN', image: 'images/chinatown.png', x: 0, y: 2 },
+            { id: '0b', name: 'RENT', image: 'images/rent.png', x: 0, y: 1 }
+        ];
+
+        // Attempt to load from ScryptBundle if window globals are missing
+        const bundle = window.ScryptBundle || {};
+        const GameContract = window.GameContract || bundle.GameContract;
+        const scrypt = window.scrypt || bundle.scrypt;
+
+        if (!scrypt) {
+            console.error('Scrypt library not found!');
+            document.getElementById('logs').textContent += '[Error] Scrypt library not loaded. Check console.\n';
+        } else {
+            console.log('Scrypt loaded:', scrypt);
+
+            // Load Artifact for GameContract.fromTx to work
+            if (typeof GAME_CONTRACT_ARTIFACT !== 'undefined') {
+                try {
+                    GameContract.loadArtifact(GAME_CONTRACT_ARTIFACT);
+                    console.log('Contract Artifact Loaded (from global)');
+
+                    // Runtime patch for GameContract
+                    if (typeof GameContract !== 'undefined') {
+                        const patch = (cls) => {
+                            cls.unpackState = unpackStateStatic; // Make it static
+                            cls.prototype.unpackState = function (data) { return unpackStateStatic(data || this.packedGameState); };
+                            cls.unpackState1 = unpackStateStatic; // Alias
+
+                            // Alias old method names if necessary
+                            if (cls.prototype.triggerRandomEvent && !cls.prototype.triggerNewDay) {
+                                cls.prototype.triggerNewDay = cls.prototype.triggerRandomEvent;
+                            }
+                            console.log('[Patch] GameContract methods refined at runtime (global).');
+                        };
+                        patch(GameContract);
+                    }
+
+                    initMap();
+                    loadHistoryUI();
+                } catch (e) {
+                    console.error("Failed to load artifact from global:", e);
+                    log("Error loading artifact from global variable.");
+                }
+            } else {
+                console.warn("GAME_CONTRACT_ARTIFACT not found. Attempting fetch...");
+                fetch('Tamagochi_v1.json')
+                    .then(r => r.json())
+                    .then(artifact => {
+                        GameContract.loadArtifact(artifact);
+                        console.log('Tamagochi_v1 Artifact Loaded (fetch)');
+
+                        // Runtime patch for GameContract
+                        if (typeof GameContract !== 'undefined') {
+                            const patch = (cls) => {
+                                cls.unpackState = unpackStateStatic; // Make it static
+                                cls.prototype.unpackState = function (data) { return unpackStateStatic(data || this.packedGameState); };
+                                cls.unpackState1 = unpackStateStatic; // Alias
+
+                                // Alias old method names if necessary
+                                if (cls.prototype.triggerRandomEvent && !cls.prototype.triggerNewDay) {
+                                    cls.prototype.triggerNewDay = cls.prototype.triggerRandomEvent;
+                                }
+
+                                console.log('[Patch] GameContract methods refined at runtime.');
+                            };
+                            patch(GameContract);
+                        }
+
+                        initMap();
+                        loadHistoryUI();
+                    })
+                    .catch(err => {
+                        console.error('Failed to load artifact:', err);
+                        log('Error: Could not load contract artifact. Recovery features may fail.');
+                        // Still init UI
+                        initMap();
+                        loadHistoryUI();
+                    });
+            }
+        }
+
+        // --- TAMAGOTCHI V1 ITEMS & MERKLE LOGIC ---
+        // Ported from wallet_scrypt/items.ts and build_items_merkle.ts
+
+
+
+        let ITEMS_DB = [];
+        let itemsTree = null;
+        let itemsRoot = null;
+
+
+        // --- Enums & Constants (Must Match Contract) ---
+        const ActionType = {
+            BUY_ITEM: 0,
+            CHANGE_CLOTHES: 1,
+            MOVE: 2,
+            WORK: 3,
+            REST: 4,
+            STUDY: 5,
+            INVEST: 6,
+            WITHDRAW: 7,
+            PAY_RENT: 8,
+            FIND_JOB: 9,
+            QUIT_JOB: 10,
+            EAT: 11
+        };
+
+        const ValueChanges = {
+            money: 0,
+            happiness: 1,
+            foodSupply: 2,
+            educationalCourseCnt: 3,
+            exp1: 4,
+            exp2: 5,
+            exp3: 6,
+            exp4: 7,
+            flag_has_dietwise_flag: 8,
+            flag_HAS_HOUSE_FLAG: 9,
+            flag_HAS_CAR_FLAG: 10,
+            flag_HAS_REFRIGERATOR_FLAG: 11,
+            flag_HAS_SNEAKERS_FLAG: 12,
+            flag_USE_MAGIC_CARD: 13,
+            flag_HAS_BICYCLE_FLAG: 14,
+            flag_HAS_BACKPACK_FLAG: 15,
+            flag_HAS_BANK_WORKER_CLOTHES_FLAG: 16,
+            flag_HAS_FACTORY_WORKER_CLOTHES_FLAG: 17,
+            flag_HAS_HEADHUNTER_WORKER_CLOTHES_FLAG: 18,
+            flag_HAS_INSURANCE_BROKER_CLOTHES_FLAG: 19,
+            flag_HAS_HITECH_WORKER_CLOTHES_FLAG: 20,
+            flag_HAS_CLOTHES_SHOP_WORKER_CLOTHES_FLAG: 21,
+            flag_HAS_FOOD_WORKER_CLOTHES_FLAG: 22,
+            flag_HAS_CHINATOWN_WORKER_CLOTHES_FLAG: 23,
+            flag_HAS_RENT_WORKER_CLOTHES_FLAG: 24
+        };
+
+        const ItemId = {
+            REFRIGERATOR: 0,
+            CAR: 1,
+            HOUSE: 2,
+            BALANCED_MEAL: 3,
+            FAST_FOOD: 4,
+            BOOK: 5,
+            SNEAKERS: 6,
+            BACKPACK: 7,
+            USB_MINER: 8,
+            MUSICAL_INSTRUMENT: 9,
+            BICYCLE: 10,
+            EDUCATIONAL_COURSE: 11,
+            MAGIC_CARD: 12,
+            RENT: 13,
+            TRAVEL_CARD: 14,
+            NutriCore: 15,
+            PROPERTY_INSURANCE: 16,
+            WORK: 17,
+            REST: 18,
+            STUDY: 19,
+            INVEST: 20,
+            WITHDRAW: 21,
+            SODA_WATER: 22,
+            FIND_JOB: 23,
+            QUIT_JOB: 24,
+            BANK_WORKER_CLOTHES: 25,
+            FACTORY_WORKER_CLOTHES: 26,
+            HEADHUNTER_WORKER_CLOTHES: 27,
+            INSURANCE_BROKER_CLOTHES: 28,
+            HITECH_WORKER_CLOTHES: 29,
+            CLOTHES_SHOP_WORKER_CLOTHES: 30,
+            FOOD_WORKER_CLOTHES: 31,
+            CHINATOWN_WORKER_CLOTHES: 32,
+            RENT_WORKER_CLOTHES: 33,
+            CHANGE_CLOTHES: 34,
+            MOVE_ACTION: 35,
+            EAT_ACTION: 36
+        };
+
+        // Initialize Items
+        function initItemsDB(scrypt) {
+            const { toByteString, int2ByteString } = scrypt;
+
+            // Debug toByteString type
+            const testStr = toByteString('test', true);
+            console.log("Debug toByteString type:", typeof testStr, testStr);
+
+            // Helper for stats logic (copying items.ts structure)
+            // ... [Content of all 36 items] ...
+            // Since this is long, we construct it meticulously.
+
+            ITEMS_DB = [
+                { id: ItemId.REFRIGERATOR, name: toByteString('Refrigerator', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 50n, possibleLocations: int2ByteString(3n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(10n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_REFRIGERATOR_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.CAR, name: toByteString('Car', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 300n, possibleLocations: int2ByteString(5n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(26n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_CAR_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.HOUSE, name: toByteString('House', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 300n, possibleLocations: int2ByteString(3n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(65n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_HOUSE_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.BALANCED_MEAL, name: toByteString('Food package', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 150n, possibleLocations: int2ByteString(9n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.foodSupply), 1n) + int2ByteString(11n, 2n) },
+                { id: ItemId.FAST_FOOD, name: toByteString('Fast Food', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 21n, possibleLocations: int2ByteString(9n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(20n, 2n) + int2ByteString(BigInt(ValueChanges.foodSupply), 1n) + int2ByteString(1n, 2n) },
+                { id: ItemId.BOOK, name: toByteString('Book', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 2n, possibleLocations: int2ByteString(10n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(15n, 2n) },
+                { id: ItemId.SNEAKERS, name: toByteString('Sneakers', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 35n, possibleLocations: int2ByteString(1n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_SNEAKERS_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.BACKPACK, name: toByteString('Backpack', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 17n, possibleLocations: int2ByteString(9n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.flag_HAS_BACKPACK_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.USB_MINER, name: toByteString('USB MINER', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 60n, possibleLocations: int2ByteString(10n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(75n, 2n) + int2ByteString(BigInt(ValueChanges.flag_has_dietwise_flag), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.MUSICAL_INSTRUMENT, name: toByteString('Musical Instrument', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 15n, possibleLocations: int2ByteString(10n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(20n, 2n) },
+                { id: ItemId.BICYCLE, name: toByteString('Bicycle', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 30n, possibleLocations: int2ByteString(10n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_BICYCLE_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.EDUCATIONAL_COURSE, name: toByteString('Educational Course', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 155n, possibleLocations: int2ByteString(8n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(30n, 2n) + int2ByteString(BigInt(ValueChanges.educationalCourseCnt), 1n) + int2ByteString(1n, 2n) },
+                { id: ItemId.MAGIC_CARD, name: toByteString('Magic Card', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 20n, possibleLocations: int2ByteString(2n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.flag_USE_MAGIC_CARD), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.RENT, name: toByteString('Rent', true), actionType: ActionType.PAY_RENT, priceDaySalary: 8n, possibleLocations: int2ByteString(11n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.exp1), 1n) + int2ByteString(5n, 2n) },
+                { id: ItemId.TRAVEL_CARD, name: toByteString('Travel Card', true), actionType: ActionType.PAY_RENT, priceDaySalary: 5n, possibleLocations: int2ByteString(2n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.exp2), 1n) + int2ByteString(5n, 2n) },
+                { id: ItemId.NutriCore, name: toByteString('Miner Activation', true), actionType: ActionType.PAY_RENT, priceDaySalary: 15n, possibleLocations: int2ByteString(5n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.exp4), 1n) + int2ByteString(5n, 2n) },
+                { id: ItemId.PROPERTY_INSURANCE, name: toByteString('Property Insurance', true), actionType: ActionType.PAY_RENT, priceDaySalary: 3n, possibleLocations: int2ByteString(2n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.exp3), 1n) + int2ByteString(5n, 2n) },
+                { id: ItemId.WORK, name: toByteString('Work', true), actionType: ActionType.WORK, priceDaySalary: 0n, possibleLocations: int2ByteString(0n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(15n, 2n) },
+                { id: ItemId.REST, name: toByteString('Rest', true), actionType: ActionType.REST, priceDaySalary: 0n, possibleLocations: int2ByteString(4n, 1n) + int2ByteString(7n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(20n, 2n) },
+                { id: ItemId.STUDY, name: toByteString('Study', true), actionType: ActionType.STUDY, priceDaySalary: 0n, possibleLocations: int2ByteString(8n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(15n, 2n) },
+                { id: ItemId.INVEST, name: toByteString('Invest', true), actionType: ActionType.INVEST, priceDaySalary: 0n, possibleLocations: int2ByteString(0n, 1n), valuesToChange: toByteString('', true) },
+                { id: ItemId.WITHDRAW, name: toByteString('Withdraw', true), actionType: ActionType.WITHDRAW, priceDaySalary: 0n, possibleLocations: int2ByteString(0n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) },
+                { id: ItemId.SODA_WATER, name: toByteString('Soda Water', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 2n, possibleLocations: int2ByteString(11n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) },
+                { id: ItemId.FIND_JOB, name: toByteString('Find Job', true), actionType: ActionType.FIND_JOB, priceDaySalary: 0n, possibleLocations: int2ByteString(6n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(10n, 2n) },
+                { id: ItemId.QUIT_JOB, name: toByteString('Quit Job', true), actionType: ActionType.QUIT_JOB, priceDaySalary: 0n, possibleLocations: int2ByteString(6n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(10n, 2n) },
+                { id: ItemId.BANK_WORKER_CLOTHES, name: toByteString('Bank Worker Clothes', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 160n, possibleLocations: int2ByteString(1n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_BANK_WORKER_CLOTHES_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.FACTORY_WORKER_CLOTHES, name: toByteString('Factory Worker Clothes', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 90n, possibleLocations: int2ByteString(1n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_FACTORY_WORKER_CLOTHES_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.HEADHUNTER_WORKER_CLOTHES, name: toByteString('Headhunter Worker Clothes', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 80n, possibleLocations: int2ByteString(1n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_HEADHUNTER_WORKER_CLOTHES_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.INSURANCE_BROKER_CLOTHES, name: toByteString('Insurance Broker Clothes', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 7n, possibleLocations: int2ByteString(1n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_INSURANCE_BROKER_CLOTHES_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.HITECH_WORKER_CLOTHES, name: toByteString('Hi-Tech Worker Clothes', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 64n, possibleLocations: int2ByteString(1n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_HITECH_WORKER_CLOTHES_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.CLOTHES_SHOP_WORKER_CLOTHES, name: toByteString('Clothes Shop Worker Clothes', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 60n, possibleLocations: int2ByteString(1n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_CLOTHES_SHOP_WORKER_CLOTHES_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.FOOD_WORKER_CLOTHES, name: toByteString('Food Worker Clothes', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 50n, possibleLocations: int2ByteString(1n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_FOOD_WORKER_CLOTHES_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.CHINATOWN_WORKER_CLOTHES, name: toByteString('Chinatown Worker Clothes', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 20n, possibleLocations: int2ByteString(1n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_CHINATOWN_WORKER_CLOTHES_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.RENT_WORKER_CLOTHES, name: toByteString('Rent Office Worker Clothes', true), actionType: ActionType.BUY_ITEM, priceDaySalary: 82n, possibleLocations: int2ByteString(1n, 1n), valuesToChange: int2ByteString(BigInt(ValueChanges.happiness), 1n) + int2ByteString(5n, 2n) + int2ByteString(BigInt(ValueChanges.flag_HAS_RENT_WORKER_CLOTHES_FLAG), 1n) + int2ByteString(1n, 1n) },
+                { id: ItemId.CHANGE_CLOTHES, name: toByteString('Change Clothes', true), actionType: ActionType.CHANGE_CLOTHES, priceDaySalary: 0n, possibleLocations: int2ByteString(1n, 1n), valuesToChange: toByteString('', true) },
+                { id: ItemId.MOVE_ACTION, name: toByteString('Move', true), actionType: ActionType.MOVE, priceDaySalary: 0n, possibleLocations: toByteString('', true), valuesToChange: toByteString('', true) },
+                { id: ItemId.EAT_ACTION, name: toByteString('Eat', true), actionType: ActionType.EAT, priceDaySalary: 0n, possibleLocations: int2ByteString(4n, 1n) + int2ByteString(7n, 1n), valuesToChange: toByteString('', true) }
+            ];
+
+            // Build Merkle Tree
+            itemsTree = new MerkleTree(ITEMS_DB, scrypt);
+            itemsRoot = itemsTree.getRoot();
+            console.log("Calculated Items Root:", itemsRoot);
+            console.log("Tree depth:", itemsTree.tree.length, "Leaves (padded):", itemsTree.leaves.length);
+            return itemsRoot;
+        }
+
+        class MerkleTree {
+            constructor(items, scrypt) {
+                this.scrypt = scrypt;
+                this.items = items;
+                this.leaves = items.map(item => this.hashItem(item));
+
+                // Pad leaves to next power of 2 (64 for depth 6)
+                const targetSize = 64;
+                const emptyLeafHash = this.scrypt.hash256(this.scrypt.toByteString('', true));
+                while (this.leaves.length < targetSize) {
+                    this.leaves.push(emptyLeafHash);
+                }
+
+                this.tree = this.buildTree(this.leaves);
+            }
+
+            hashItem(item) {
+                try {
+                    const serialized = this.serializeItem(item);
+                    return this.scrypt.hash256(serialized);
+                } catch (e) {
+                    console.error("[MerkleTree] Error hashing item:", item, e);
+                    throw e;
+                }
+            }
+
+            serializeItem(item) {
+                const { int2ByteString } = this.scrypt;
+
+                // Must match contract's item serialization exactly
+                return int2ByteString(BigInt(item.id), 1n) +
+                    item.name +
+                    int2ByteString(BigInt(item.actionType), 1n) +
+                    int2ByteString(BigInt(item.priceDaySalary), 32n) +
+                    int2ByteString(BigInt(item.possibleLocations.length / 2), 1n) + item.possibleLocations +
+                    int2ByteString(BigInt(item.valuesToChange.length / 2), 2n) + item.valuesToChange;
+            }
+
+            buildTree(leaves) {
+                const layers = [leaves];
+                let currentLayer = leaves;
+                while (currentLayer.length > 1) {
+                    const nextLayer = [];
+                    for (let i = 0; i < currentLayer.length; i += 2) {
+                        nextLayer.push(this.scrypt.hash256(currentLayer[i] + currentLayer[i + 1]));
+                    }
+                    layers.push(nextLayer);
+                    currentLayer = nextLayer;
+                }
+                return layers;
+            }
+
+            getRoot() {
+                return this.tree[this.tree.length - 1][0];
+            }
+
+            getProof(index) {
+                let currentIdx = index;
+                const siblings = [];
+                // Exactly 6 levels for depth-6 tree (2^6 = 64 leaves)
+                for (let i = 0; i < 6; i++) {
+                    const layer = this.tree[i];
+                    const isLeft = currentIdx % 2 === 0;
+                    const siblingIdx = isLeft ? currentIdx + 1 : currentIdx - 1;
+                    siblings.push(layer[siblingIdx]);
+                    currentIdx = Math.floor(currentIdx / 2);
+                }
+                return {
+                    index: BigInt(index),
+                    siblings: siblings
+                };
+            }
+        }
+        function saveToHistory(txId, deploymentId = null) {
+            let history = JSON.parse(localStorage.getItem('scrypt_history_v2') || '[]');
+
+            // If deploymentId is provided, update that game's latest tx
+            // If not, try to find existing entry for this tx flow?
+
+            if (deploymentId) {
+                // Remove existing for this deployment
+                history = history.filter(h => h.deploymentId !== deploymentId);
+                // Add new head
+                history.unshift({
+                    txId: txId,
+                    deploymentId: deploymentId,
+                    timestamp: new Date().getTime()
+                });
+            } else {
+                // Simple add if no deployment ID known (fallback)
+                if (!history.find(h => h.txId === txId)) {
+                    history.unshift({
+                        txId: txId,
+                        deploymentId: txId, // Assume self-deployed
+                        timestamp: new Date().getTime()
+                    });
+                }
+            }
+
+            if (history.length > 20) history.pop(); // Keep last 20 games
+            localStorage.setItem('scrypt_history_v2', JSON.stringify(history));
+            loadHistoryUI();
+        }
+
+        function loadHistoryUI() {
+            const list = document.getElementById('historyList');
+            if (!list) return;
+            // Migration check: if v2 missing, check v1? Nah, let's just start fresh or use v2.
+            const history = JSON.parse(localStorage.getItem('scrypt_history_v2') || '[]');
+
+            list.innerHTML = '';
+            if (history.length === 0) {
+                list.innerHTML = '<li style="color: #666; font-size: 0.9em;">No active games found. Scan or Deploy!</li>';
+                return;
+            }
+
+            history.forEach(item => {
+                const li = document.createElement('li');
+                li.style.marginBottom = '5px';
+                li.style.fontSize = '0.9em';
+                li.style.display = 'flex';
+                li.style.justifyContent = 'space-between';
+                li.style.alignItems = 'center';
+
+                const date = new Date(item.timestamp).toLocaleDateString();
+                const shortId = item.txId.substring(0, 8) + '...';
+                const isCurrent = currentTxId === item.txId;
+
+                li.innerHTML = `
+                    <div>
+                        <span style="font-weight:bold; color: #888;">GAME</span>
+                        <span title="${date}" style="${isCurrent ? 'color:green; font-weight:bold;' : ''}">${shortId}</span> 
+                    </div>
+                    <div>
+                        <button onclick="loadContract('${item.txId}', '${item.deploymentId}')" style="padding: 2px 5px; font-size: 0.8em; cursor:pointer;">${isCurrent ? 'Active' : 'Load'}</button>
+                        <a href="https://whatsonchain.com/tx/${item.txId}" target="_blank" style="margin-left: 5px; font-size: 0.8em;">🔍</a>
+                    </div>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        function clearHistory() {
+            if (confirm('Clear all game history?')) {
+                localStorage.removeItem('scrypt_history_v2');
+                loadHistoryUI();
+            }
+        }
+
+        async function loadContract(txId, deploymentId) {
+            if (!signer) return alert('Please initialize wallet first');
+
+            try {
+                log(`Loading contract: ${txId}...`);
+                currentTxId = txId;
+                if (deploymentId) currentDeploymentId = deploymentId;
+
+                document.getElementById('contractId').textContent = currentTxId;
+
+                // Create a fresh instance wrapper (we don't strictly need a new GameContract instance object 
+                // for read-only actions, but performAction re-fetches anyway)
+                // Just update UI state
+                await updateGameState();
+
+                // Trigger time event check in case we are in a pending state
+                await checkTimeEvent();
+
+                log('Contract loaded successfully.');
+
+            } catch (e) {
+                log(`Error loading contract: ${e.message}`);
+            }
+        }
+        // ---------------------
+
+        function initMap() {
+            const mapContainer = document.getElementById('map-container');
+            // Ensure character stays
+            const character = document.getElementById('character');
+
+            LOCATIONS.forEach(loc => {
+                const el = document.createElement('div');
+                el.className = 'location';
+                el.id = `loc-${loc.id}`; // Avoid ID collisions
+                el.style.backgroundImage = `url('${loc.image}')`;
+                el.style.gridColumn = loc.x + 1;
+                el.style.gridRow = loc.y + 1;
+                el.title = loc.name;
+
+                const label = document.createElement('div');
+                label.className = 'location-name';
+                label.innerText = loc.name;
+                el.appendChild(label);
+
+                // Click to Move or show actions if at location
+                el.onclick = () => {
+                    const predictedState = getPredictedState();
+                    const predictedLoc = predictedState.currentLocation.toLowerCase();
+                    const targetLoc = loc.id.toLowerCase();
+
+                    // If already at this location (predicted), show action panel instead
+                    if (predictedLoc === targetLoc) {
+                        showLocationActions(targetLoc);
+                        return;
+                    }
+
+                    // Check if last queued action is already a move to this location
+                    if (actionQueue.length > 0) {
+                        const lastAction = actionQueue[actionQueue.length - 1];
+                        if (lastAction.type === 2n) {
+                            // For MOVE, destination is stored in amount
+                            const lastTargetHex = lastAction.amount.toString(16).padStart(2, '0').toLowerCase();
+                            if (lastTargetHex === targetLoc) {
+                                // Already queued move to this location, show actions
+                                showLocationActions(targetLoc);
+                                return;
+                            }
+                        }
+                    }
+
+                    const type = 2n; // MOVE
+                    const id = BigInt(ItemId.MOVE_ACTION); // Always use MOVE_ACTION item (id=35)
+                    const destination = BigInt('0x' + loc.id); // Destination location encoded as amount
+                    const name = `Move to ${loc.name}`;
+                    addToQueue(type, id, destination, name);
+
+                    // After adding move, show actions for target location
+                    showLocationActions(targetLoc);
+                };
+                el.style.cursor = 'pointer';
+
+                mapContainer.appendChild(el);
+            });
+
+            // Re-append character to be on top (z-index handled by CSS but order helps)
+            mapContainer.appendChild(character);
+
+            // Initialize location app with default location (Hostel)
+            setTimeout(() => showLocationActions('04'), 100);
+        }
+
+        // Show location-based action panel in the location app
+        function showLocationActions(locId) {
+            const locData = LOCATION_ACTIONS[locId];
+            if (!locData) return;
+
+            const predictedState = getPredictedState();
+            const hasHouse = (BigInt(predictedState.flags || 0) & FLAGS.HAS_HOUSE.bit) !== 0n;
+            const dailySalary = Number(predictedState.dailySalary) || 30;
+
+            // Update location header
+            const iconEl = document.getElementById('locationIcon');
+            const titleEl = document.getElementById('locationTitle');
+            const descEl = document.getElementById('locationDesc');
+            const actionsEl = document.getElementById('locationActions');
+            const infoEl = document.getElementById('locationInfo');
+            const appEl = document.getElementById('locationApp');
+
+            if (!iconEl) return; // Panel not ready
+
+            iconEl.textContent = locData.icon || '📍';
+            titleEl.textContent = locData.name;
+            descEl.textContent = locData.desc || '';
+            appEl.style.background = `linear-gradient(135deg, ${locData.color}22 0%, #16213e 100%)`;
+            appEl.style.borderLeft = `4px solid ${locData.color}`;
+
+            // Check conditions
+            const isWorkLocation = predictedState.workLocation.toLowerCase() === locId;
+            const isUnemployed = predictedState.workLocation === 'ff';
+
+            // Check hours for blocking actions
+            if (predictedState.hoursLeft <= 0) {
+                appEl.style.opacity = '0.5';
+                actionsEl.innerHTML = '<div style="color: #fca5a5; font-style: italic;">Day is over. Actions disabled.</div>';
+                infoEl.innerHTML = '';
+                return;
+            } else {
+                appEl.style.opacity = '1';
+            }
+
+            let actionsHtml = '';
+            let infoHtml = '';
+
+            const happinessOK = predictedState.happiness > 0n;
+            const hasCourses = (predictedState.educationalCourseCnt || 0n) > 0n || (predictedState.currentLesson || 0n) > 0n;
+
+            // Check home location access
+            // Check home location access
+            const correctHome = getHomeLocation(hasHouse);
+            const isAtCorrectHome = locId === correctHome;
+            const isHomeLocation = locData.isHome;
+
+            if (isHomeLocation && !isAtCorrectHome) {
+                if (locData.requiresHouse && !hasHouse) {
+                    infoHtml = `<div style="color: #f39c12;">⚠️ You need to own a House to use this location</div>`;
+                } else if (locData.requiresNoHouse && hasHouse) {
+                    infoHtml = `<div style="color: #f39c12;">⚠️ House owners use Hi-Tech Home instead</div>`;
+                }
+            }
+
+            // Add WORK button if at work location
+            if (isWorkLocation && locData.workAction) {
+                const workDisabled = !happinessOK ? 'disabled' : '';
+                const workStyle = happinessOK
+                    ? 'background: linear-gradient(135deg, #28a745, #20c997); box-shadow: 0 4px 15px rgba(40,167,69,0.4);'
+                    : 'background: #6c757d; opacity: 0.6;';
+                actionsHtml += `
+                    <button onclick="addActionToQueue(17, 3n, 1n, 'Work (1h)')" ${workDisabled}
+                            class="action-btn"
+                            style="${workStyle} padding: 10px 16px; border-radius: 8px; display: flex; align-items: center; gap: 8px; font-weight: 600; border: none; cursor: pointer;">
+                        💼 Work (+1h) <span style="font-size: 0.8em; opacity: 0.8;">+$${dailySalary}/hr</span>
+                    </button>`;
+                if (!happinessOK) {
+                    infoHtml += `<div style="color: #e74c3c;">😔 Cannot work with 0 happiness</div>`;
+                }
+            }
+
+            // Add location-specific actions
+            for (const action of locData.actions) {
+
+                // Handle dynamic clothes menu
+                if (action.isClothesMenu) {
+                    const clothesMap = [
+                        { id: 25, flag: FLAGS.HAS_BANK_CLOTHES, name: 'Bank Uniform', emoji: '🏦' },
+                        { id: 26, flag: FLAGS.HAS_FACTORY_CLOTHES, name: 'Factory Uniform', emoji: '🏭' },
+                        { id: 27, flag: FLAGS.HAS_HEADHUNTER_CLOTHES, name: 'Headhunter Suit', emoji: '🎯' },
+                        { id: 28, flag: FLAGS.HAS_INSURANCE_CLOTHES, name: 'Insurance Attire', emoji: '📋' },
+                        { id: 29, flag: FLAGS.HAS_HITECH_CLOTHES, name: 'HiTech Uniform', emoji: '💻' },
+                        { id: 30, flag: FLAGS.HAS_CLOTHSHOP_CLOTHES, name: 'Shop Uniform', emoji: '👚' },
+                        { id: 31, flag: FLAGS.HAS_FOOD_CLOTHES, name: 'Food Worker', emoji: '🍽️' },
+                        { id: 32, flag: FLAGS.HAS_CHINATOWN_CLOTHES, name: 'Chinatown Attire', emoji: '🏮' },
+                        { id: 33, flag: FLAGS.HAS_RENT_CLOTHES, name: 'Rent Office', emoji: '🏢' },
+                        { id: 6, flag: FLAGS.HAS_SNEAKERS, name: 'Sneakers', emoji: '👟' }
+                    ];
+
+                    const predictedFlags = BigInt(predictedState.flags || 0);
+
+                    for (const cloth of clothesMap) {
+                        // Check if owned
+                        if ((predictedFlags & cloth.flag.bit) !== 0n) {
+                            // Add button to wear this specific cloth
+                            actionsHtml += `
+                            <button onclick="addActionToQueue(${cloth.id}, 1n, 0n, 'Wear ${cloth.name}')" 
+                                    class="action-btn"
+                                    style="background: #795548; padding: 10px 14px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; border: none; cursor: pointer; min-width: 80px;">
+                                <span style="display: flex; align-items: center; gap: 5px;">${cloth.emoji} Wear</span>
+                                <span style="font-size: 0.7em; opacity: 0.7;">${cloth.name}</span>
+                            </button>`;
+                        }
+                    }
+                    continue;
+                }
+
+                // Filter clothes shop: show only current job uniform (or sneakers which has no workLoc)
+                if (locId === '01' && action.workLoc) {
+                    // Only show uniform for current job (or if unemployed, don't show any uniforms)
+                    if (isUnemployed || action.workLoc !== predictedState.workLocation.toLowerCase()) {
+                        continue;
+                    }
+                }
+
+                // Check conditions
+                if (action.condition === 'unemployed' && !isUnemployed) continue;
+                if (action.condition === 'employed' && isUnemployed) continue;
+                if (action.condition === 'hasCourses' && !hasCourses) {
+                    // Show disabled study button with message
+                    actionsHtml += `
+                        <button disabled style="background: #6c757d; opacity: 0.5; padding: 10px 14px; border-radius: 8px; display: flex; align-items: center; gap: 6px; border: none; color: white;">
+                            ${action.emoji} ${action.name} <span style="font-size: 0.75em;">(need course)</span>
+                        </button>`;
+                    continue;
+                }
+
+                // Skip home actions if at wrong home
+                if (isHomeLocation && !isAtCorrectHome) continue;
+
+                // Calculate price
+                const price = action.priceMult ? calculateItemPrice(action.priceMult, dailySalary) : 0;
+                const canAfford = price === 0 || predictedState.money >= BigInt(price);
+                const disabled = !canAfford ? 'disabled' : '';
+
+                const btnStyle = canAfford
+                    ? `background: ${locData.color}; box-shadow: 0 2px 10px ${locData.color}44;`
+                    : 'background: #6c757d; opacity: 0.5;';
+
+                const priceText = price > 0 ? `<span style="font-size: 0.8em; opacity: 0.8;">$${price}</span>` : '';
+                const descText = action.desc ? `<span style="font-size: 0.7em; opacity: 0.7; display: block;">${action.desc}</span>` : '';
+
+                actionsHtml += `
+                    <button onclick="addActionToQueue(${action.itemId}, ${action.type}n, ${action.hasAmount ? '1n' : '0n'}, '${action.name}')" ${disabled}
+                            class="action-btn"
+                            style="${btnStyle} padding: 10px 14px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; border: none; cursor: pointer; min-width: 80px;">
+                        <span style="display: flex; align-items: center; gap: 5px;">${action.emoji} ${action.name} ${priceText}</span>
+                        ${descText}
+                    </button>`;
+            }
+
+            // Show info about current location
+            if (isWorkLocation) {
+                infoHtml += `<div style="color: #2ecc71;">💼 This is your workplace (Salary: $${dailySalary}/hr)</div>`;
+            }
+            if (isHomeLocation && isAtCorrectHome) {
+                infoHtml += `<div style="color: #3498db;">🏠 This is your home - Rest here to restore happiness</div>`;
+            }
+            // Clothes shop info
+            if (locId === '01') {
+                if (isUnemployed) {
+                    infoHtml += `<div style="color: #f39c12;">👔 Find a job first to buy your work uniform</div>`;
+                } else {
+                    const workLocName = LOCATIONS.find(l => l.id === predictedState.workLocation.toLowerCase())?.name || 'Unknown';
+                    infoHtml += `<div style="color: #e91e63;">👔 Showing uniform for: ${workLocName.replace('_', ' ')}</div>`;
+                }
+            }
+
+            actionsEl.innerHTML = actionsHtml || '<div style="color: #8892b0; font-style: italic;">No actions available here</div>';
+            infoEl.innerHTML = infoHtml;
+        }
+
+        // Helper to add action to queue
+        function addActionToQueue(itemId, type, amount, name) {
+            addToQueue(type, BigInt(itemId), amount, name);
+        }
+
+        function updateMapState(state) {
+            // Update Character Position
+            const locId = state.currentLocation; // Hex string from unpackState1
+            const targetLoc = LOCATIONS.find(l => l.id.toLowerCase() === locId.toLowerCase());
+
+            if (targetLoc) {
+                const charEl = document.getElementById('character');
+                // Calculate position relative to the grid item
+                // Grid cells are 100x100 with 10gap
+                // x: (col-1) * 110 + 20 (padding/center offset)
+                const top = (targetLoc.y * 110) + 20;
+                const left = (targetLoc.x * 110) + 20;
+
+                charEl.style.top = `${top}px`;
+                charEl.style.left = `${left}px`;
+                charEl.style.backgroundImage = `url('images/ch${state.currentClothes || 0}.png')`;
+            }
+
+            // Update Work Indicator
+            document.querySelectorAll('.work-indicator').forEach(e => e.remove());
+            const workId = state.workLocation;
+            if (workId && workId !== 'ff') {
+                const workLoc = LOCATIONS.find(l => l.id.toLowerCase() === workId.toLowerCase());
+                if (workLoc) {
+                    const locEl = document.getElementById(`loc-${workLoc.id}`);
+                    if (locEl) {
+                        const indicator = document.createElement('div');
+                        indicator.className = 'work-indicator';
+                        locEl.appendChild(indicator);
+                    }
+                }
+            }
+        }
+
+        function log(msg) {
+            const logs = document.getElementById('logs');
+            const time = new Date().toLocaleTimeString();
+            logs.textContent += `[${time}] ${msg}\n`;
+            logs.scrollTop = logs.scrollHeight;
+            console.log(msg);
+        }
+
+        async function initWallet() {
+            try {
+                const wif = document.getElementById('wifKey').value.trim();
+                if (!wif) return alert('Enter WIF key');
+
+                const providerType = document.getElementById('providerSelect').value;
+                log(`Initializing wallet with ${providerType}...`);
+
+                // Setup Scrypt
+                // Use the new sCrypt API key provided by user for indexer services
+                scrypt.Scrypt.init({
+                    apiKey: '4T2vKkTNg7tfaOVsvmOeEh7E1rMUNk9dbYfjCejmLY6A6R2n',
+                    network: scrypt.bsv.Networks.mainnet
+                });
+
+                // Initialize Items DB once scrypt is available
+                if (!itemsRoot) {
+                    initItemsDB(scrypt);
+                }
+
+                let privateKey;
+                try {
+                    // Try to decode Base64 first (User request)
+                    const decoded = atob(wif);
+                    // Check if decoded result looks like a valid WIF (Starts with K, L, c, 5...)
+                    if (decoded && (decoded.startsWith('K') || decoded.startsWith('L') || decoded.startsWith('5') || decoded.startsWith('c'))) {
+                        privateKey = scrypt.bsv.PrivateKey.fromWIF(decoded);
+                    } else {
+                        throw new Error("Not a B64 WIF");
+                    }
+                } catch (e) {
+                    // Fallback to raw input
+                    privateKey = scrypt.bsv.PrivateKey.fromWIF(wif);
+                }
+
+                if (providerType === 'taal') {
+                    // Use the previous key for TaalProvider (assuming it's a Taal key)
+                    provider = new scrypt.TaalProvider('mainnet_bf0d115a342ef216d0445041cb405a37');
+
+                    // PATCH: Fix 404 on feeQuote by setting default fee manually
+                    // 50 sat/kb = 0.05 sat/byte (approx). 
+                    // Standard logic usually wants ~250-500 sat/kb (0.25-0.5 sat/byte).
+                    // Let's set 500 (0.5 sat/byte) to be safe for propagation.
+                    // Set 100 sat/kb (0.1 sat/byte) as recommended
+                    provider._feePerKb = 100;
+                    console.log("Patched TaalProvider fee to 100 sat/kb");
+
+                    // PATCH: Fix 404 on broadcast by updating to ARC endpoint
+                    // The library uses `api.taal.com/api/v1/broadcast` which is 404'ing.
+                    // We need to verify if we can just point it to ARC.
+                    // Actually, if we use scrypt-ts, we might just want to use a generic functional provider or monkey patch.
+
+                    // Force the internal broadcast URL if possible, or override the method
+                    Object.defineProperty(provider, 'apiPrefix', {
+                        get: () => 'https://arc.taal.com/api/v1/tx', // Standard ARC endpoint usually involves /v1/tx
+                        configurable: true
+                    });
+
+                    // Wait, Taal's ARC might be `https://arc.taal.com/v1/tx`.
+                    // But scrypt-ts `DefaultProvider` (TaalProvider) uses specific paths.
+                    // Let's monkey patch sendRawTransaction to be sure.
+                    provider.sendRawTransaction = async function (rawTxHex) {
+                        console.log("Broadcasting via updated ARC endpoint (with CORS proxy)...");
+                        console.log("[DEBUG] Raw TX hex length:", rawTxHex?.length);
+                        console.log("[DEBUG] Raw TX hex (first 200):", rawTxHex?.substring(0, 200));
+                        // Use corsproxy.io to bypass the multiple-CORS-header issue on the TAAL endpoint
+                        const targetUrl = encodeURIComponent('https://arc.taal.com/v1/tx');
+                        const apiKeyInput = document.getElementById('customApiKey');
+                        let apiKey = apiKeyInput.value;
+
+                        // Default if empty
+                        if (!apiKey) {
+                            apiKey = 'mainnet_bf0d115a342ef216d0445041cb405a37';
+                            apiKeyInput.value = apiKey; // Populate UI
+                        }
+
+                        const headers = {
+                            'Content-Type': 'application/octet-stream'
+                        };
+                        if (apiKey) {
+                            headers['Authorization'] = `Bearer ${apiKey}`;
+                        } else {
+                            console.warn("No API Key provided for ARC broadcast!");
+                        }
+
+                        const res = await fetch(`https://corsproxy.io/?${targetUrl}`, {
+                            method: 'POST',
+                            headers: headers,
+                            body: this.isEmpty(rawTxHex) ? null : this.hexToUint8Array(rawTxHex)
+                        });
+
+                        if (!res.ok) {
+                            const text = await res.text();
+                            throw new Error(`ARC Broadcast failed: ${text}`);
+                        }
+
+                        const json = await res.json();
+                        return json.txid;
+                    };
+
+                    // Helpers for the patch
+                    provider.isEmpty = (str) => !str || str.length === 0;
+                    provider.hexToUint8Array = (hexString) => {
+                        return new Uint8Array(hexString.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                    };
+                } else {
+                    provider = new scrypt.WhatsonchainProvider(scrypt.bsv.Networks.mainnet);
+                }
+
+                // const provider = new scrypt.ScryptProvider(); // Default might work nicely too
+
+                signer = new scrypt.TestWallet(privateKey, provider);
+
+                const address = await signer.getDefaultAddress();
+                // const balance = await provider.getBalance(address); // TestWallet exposes provider? No, TestWallet takes a provider.
+
+                // We need to access provider to check balance
+                // const bal = await signer.getBalance(); // TestWallet.getBalance logic?
+                // Actually signer.getBalance is usually there.
+
+                log(`Wallet initialized. Address: ${address}`);
+                // log(`Balance: ${bal.confirmed + bal.unconfirmed} sats`);
+
+                document.getElementById('walletStatus').textContent = `Connected: ${address}`;
+                document.getElementById('walletStatus').style.color = 'green';
+                document.getElementById('btnDeploy').disabled = false;
+
+                // New: Wallet Analysis
+                await analyzeWallet(address);
+
+            } catch (e) {
+                log(`Error initializing wallet: ${e.message}`);
+                console.error(e);
+            }
+        }
+
+        async function analyzeWallet(address) {
+            try {
+                // Fetch UTXOs
+                const utxos = await provider.listUnspent(address);
+                const confirmed = utxos.filter(u => u.height > 0);
+                const unconfirmed = utxos.filter(u => u.height <= 0);
+
+                // Calculate balance
+                const balanceSats = utxos.reduce((acc, u) => acc + u.satoshis, 0);
+
+                const statsDiv = document.createElement('div');
+                statsDiv.id = 'walletStatsDiv';
+                statsDiv.style.fontSize = '0.9em';
+                statsDiv.style.marginTop = '10px';
+                statsDiv.style.padding = '10px';
+                statsDiv.style.background = '#f8f9fa';
+                statsDiv.style.border = '1px solid #dee2e6';
+                statsDiv.style.borderRadius = '8px';
+                statsDiv.style.transition = 'all 0.3s ease';
+                statsDiv.innerHTML = `
+                    <strong>Wallet Stats:</strong><br/>
+                    Balance: ${(balanceSats / 100000000).toFixed(8)} BSV <br/>
+                    UTXOs: ${utxos.length} (C: ${confirmed.length} / U: ${unconfirmed.length})
+                `;
+
+                // Append to Wallet Setup group
+                const group = document.querySelector('.group'); // First group
+                if (group) group.appendChild(statsDiv);
+
+            } catch (e) {
+                console.error("Wallet analysis failed:", e);
+                log(`Wallet analysis failed: ${e.message}`);
+            }
+        }
+
+        async function deployContract() {
+            try {
+                log('Deploying contract...');
+
+                // Get public key hash
+                const address = await signer.getDefaultAddress();
+                const pubKey = await signer.getDefaultPubKey();
+                const pubKeyHash = scrypt.PubKeyHash(scrypt.toHex(scrypt.hash160(pubKey.toString())));
+
+                // Ensure items DB and Merkle tree are initialized
+                if (!itemsRoot) {
+                    initItemsDB(scrypt);
+                }
+
+                // Construct args: playerPubKeyHash, factoryAddress, initialRandomSeed, itemsRoot
+                const instance = new GameContract(
+                    pubKeyHash,
+                    pubKeyHash, // Using same address as factory for simplicity
+                    BigInt(Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)),
+                    scrypt.Sha256(itemsRoot)
+                );
+
+                await instance.connect(signer);
+
+                const deployTx = await instance.deploy(1);
+                log(`Deployed TXID: ${deployTx.id}`);
+
+                currentTxId = deployTx.id;
+                currentDeploymentId = currentTxId; // New deployment
+                contractInstance = instance;
+
+                document.getElementById('contractId').textContent = currentTxId;
+
+                // Save to History (Grouping)
+                saveToHistory(currentTxId, currentDeploymentId);
+
+                // Check if time event is due
+                await checkTimeEvent();
+
+            } catch (e) {
+                log(`Deploy error: ${e.message}`);
+                console.error(e);
+            }
+        }
+
+        // --- Prediction Constants ---
+        // Complete ITEMS dictionary from smart contract
+        const ITEMS = {
+            0: { id: 0, name: 'Refrigerator', type: 0, price: 50, loc: '03', emoji: '🧊', hours: 1, flag: 'HAS_REFRIGERATOR' },
+            1: { id: 1, name: 'Car', type: 0, price: 300, loc: '05', emoji: '🚗', hours: 1, flag: 'HAS_CAR' },
+            2: { id: 2, name: 'House', type: 0, price: 300, loc: '03', emoji: '🏠', hours: 1, flag: 'HAS_HOUSE' },
+            3: { id: 3, name: 'Food Package', type: 0, price: 150, loc: '09', emoji: '🥗', hours: 1, foodValue: 11 },
+            4: { id: 4, name: 'Fast Food', type: 0, price: 21, loc: '09', emoji: '🍔', hours: 1, foodValue: 1 },
+            5: { id: 5, name: 'Book', type: 0, price: 2, loc: '0a', emoji: '📖', hours: 1 },
+            6: { id: 6, name: 'Sneakers', type: 0, price: 35, loc: '01', emoji: '👟', hours: 1, flag: 'HAS_SNEAKERS' },
+            7: { id: 7, name: 'Backpack', type: 0, price: 17, loc: '09', emoji: '🎒', hours: 1, flag: 'HAS_BACKPACK' },
+            8: { id: 8, name: 'USB Miner', type: 0, price: 60, loc: '0a', emoji: '🔌', hours: 1, flag: 'HAS_MINER' },
+            9: { id: 9, name: 'Musical Instrument', type: 0, price: 15, loc: '0a', emoji: '🎸', hours: 1 },
+            10: { id: 10, name: 'Bicycle', type: 0, price: 30, loc: '0a', emoji: '🚲', hours: 1, flag: 'HAS_BICYCLE' },
+            11: { id: 11, name: 'Educational Course', type: 0, price: 155, loc: '08', emoji: '🎓', hours: 1 },
+            12: { id: 12, name: 'Magic Card', type: 0, price: 20, loc: '02', emoji: '🎴', hours: 1, flag: 'USE_MAGIC_CARD' },
+            13: { id: 13, name: 'Pay Rent', type: 8, price: 8, loc: '0b', emoji: '🏠', hours: 1, expIdx: 0 },
+            14: { id: 14, name: 'Travel Card', type: 8, price: 5, loc: '02', emoji: '🎫', hours: 1, expIdx: 1 },
+            15: { id: 15, name: 'Miner Activation', type: 8, price: 15, loc: '05', emoji: '⚡', hours: 1, expIdx: 3 },
+            16: { id: 16, name: 'Property Insurance', type: 8, price: 3, loc: '02', emoji: '🛡️', hours: 1, expIdx: 2 },
+            17: { id: 17, name: 'Work', type: 3, price: 0, loc: 'work', emoji: '💼', hours: 'amount' },
+            18: { id: 18, name: 'Rest', type: 4, price: 0, loc: '04,07', emoji: '😴', hours: 'amount' },
+            19: { id: 19, name: 'Study', type: 5, price: 0, loc: '08', emoji: '📚', hours: 'amount' },
+            20: { id: 20, name: 'Invest', type: 6, price: 0, loc: '00', emoji: '📈', hours: 1 },
+            21: { id: 21, name: 'Withdraw', type: 7, price: 0, loc: '00', emoji: '📉', hours: 1 },
+            22: { id: 22, name: 'Soda Water', type: 0, price: 2, loc: '0b', emoji: '🥤', hours: 1 },
+            23: { id: 23, name: 'Find Job', type: 9, price: 0, loc: '06', emoji: '🔎', hours: 1 },
+            24: { id: 24, name: 'Quit Job', type: 10, price: 0, loc: '06', emoji: '🚪', hours: 1 },
+            25: { id: 25, name: 'Bank Uniform', type: 0, price: 160, loc: '01', emoji: '🏦', hours: 1, workLoc: '00', flag: 'HAS_BANK_CLOTHES' },
+            26: { id: 26, name: 'Factory Uniform', type: 0, price: 90, loc: '01', emoji: '🏭', hours: 1, workLoc: '05', flag: 'HAS_FACTORY_CLOTHES' },
+            27: { id: 27, name: 'Headhunter Suit', type: 0, price: 80, loc: '01', emoji: '🎯', hours: 1, workLoc: '06', flag: 'HAS_HEADHUNTER_CLOTHES' },
+            28: { id: 28, name: 'Insurance Attire', type: 0, price: 7, loc: '01', emoji: '📋', hours: 1, workLoc: '02', flag: 'HAS_INSURANCE_CLOTHES' },
+            29: { id: 29, name: 'HiTech Uniform', type: 0, price: 64, loc: '01', emoji: '💻', hours: 1, workLoc: '03', flag: 'HAS_HITECH_CLOTHES' },
+            30: { id: 30, name: 'Shop Uniform', type: 0, price: 60, loc: '01', emoji: '👚', hours: 1, workLoc: '01', flag: 'HAS_CLOTHSHOP_CLOTHES' },
+            31: { id: 31, name: 'Food Worker', type: 0, price: 50, loc: '01', emoji: '🍽️', hours: 1, workLoc: '09', flag: 'HAS_FOOD_CLOTHES' },
+            32: { id: 32, name: 'Chinatown Attire', type: 0, price: 20, loc: '01', emoji: '🏮', hours: 1, workLoc: '0a', flag: 'HAS_CHINATOWN_CLOTHES' },
+            33: { id: 33, name: 'Rent Office', type: 0, price: 82, loc: '01', emoji: '🏢', hours: 1, workLoc: '0b', flag: 'HAS_RENT_CLOTHES' },
+            34: { id: 34, name: 'Change Clothes', type: 1, price: 0, loc: '04,07', emoji: '👔', hours: 1 }
+        };
+
+        // Location-based actions dictionary with icons, colors, and descriptions
+        const LOCATION_ACTIONS = {
+            '00': { // BANK
+                name: 'Bank',
+                icon: '🏦',
+                color: '#2ecc71',
+                desc: 'Invest your savings or withdraw funds',
+                actions: [
+                    { itemId: 20, name: 'Invest', emoji: '📈', type: 6, hasAmount: true, amountLabel: '10-100%' },
+                    { itemId: 21, name: 'Withdraw', emoji: '📉', type: 7, hasAmount: true, amountLabel: '10-100%' }
+                ],
+                workAction: true
+            },
+            '01': { // CLOTHES_SHOP
+                name: 'Clothes Shop',
+                icon: '👔',
+                color: '#e91e63',
+                desc: 'Buy uniforms to unlock job locations',
+                actions: [
+                    { itemId: 6, name: 'Sneakers', emoji: '👟', type: 0, priceMult: 35, desc: 'Reduces move cost' },
+                    { itemId: 25, name: 'Bank Uniform', emoji: '🏦', type: 0, priceMult: 160, workLoc: '00' },
+                    { itemId: 26, name: 'Factory Uniform', emoji: '🏭', type: 0, priceMult: 90, workLoc: '05' },
+                    { itemId: 27, name: 'Headhunter Suit', emoji: '🎯', type: 0, priceMult: 80, workLoc: '06' },
+                    { itemId: 28, name: 'Insurance Attire', emoji: '📋', type: 0, priceMult: 7, workLoc: '02' },
+                    { itemId: 29, name: 'HiTech Uniform', emoji: '💻', type: 0, priceMult: 64, workLoc: '03' },
+                    { itemId: 30, name: 'Shop Uniform', emoji: '👚', type: 0, priceMult: 60, workLoc: '01' },
+                    { itemId: 31, name: 'Food Worker', emoji: '🍽️', type: 0, priceMult: 50, workLoc: '09' },
+                    { itemId: 32, name: 'Chinatown Attire', emoji: '🏮', type: 0, priceMult: 20, workLoc: '0a' },
+                    { itemId: 33, name: 'Rent Office', emoji: '🏢', type: 0, priceMult: 82, workLoc: '0b' }
+                ],
+                workAction: true
+            },
+            '02': { // INSURANCE_BROKERS
+                name: 'Insurance Brokers',
+                icon: '🛡️',
+                color: '#9c27b0',
+                desc: 'Buy insurance and travel cards',
+                actions: [
+                    { itemId: 12, name: 'Magic Card', emoji: '🎴', type: 0, priceMult: 20, desc: 'Random effects' },
+                    { itemId: 14, name: 'Travel Card', emoji: '🎫', type: 8, priceMult: 5, hasAmount: true, desc: 'Reduces move cost' },
+                    { itemId: 16, name: 'Property Insurance', emoji: '🛡️', type: 8, priceMult: 3, hasAmount: true, desc: 'Protects house' }
+                ],
+                workAction: true
+            },
+            '03': { // HITECH
+                name: 'Hi-Tech Store',
+                icon: '💻',
+                color: '#00bcd4',
+                desc: 'Buy high-tech items and property',
+                actions: [
+                    { itemId: 0, name: 'Refrigerator', emoji: '🧊', type: 0, priceMult: 50, desc: '+10 food storage' },
+                    { itemId: 2, name: 'House', emoji: '🏠', type: 0, priceMult: 300, desc: 'Unlock Hi-Tech Home' }
+                ],
+                workAction: true
+            },
+            '04': { // HOSTEL
+                name: 'Hostel',
+                icon: '🏨',
+                color: '#ff9800',
+                desc: 'Rest, eat and change clothes (no house)',
+                actions: [
+                    { itemId: 18, name: 'Rest', emoji: '😴', type: 4, hasAmount: true, desc: '+15% happiness/hr' },
+                    { itemId: 36, name: 'Eat', emoji: '🍽️', type: 11, hasAmount: true, desc: '+4 life blocks/food' },
+                    // Dynamic clothes options will be injected by showLocationActions
+                    { isClothesMenu: true }
+                ],
+                isHome: true,
+                requiresNoHouse: true
+            },
+            '05': { // FACTORY
+                name: 'Factory',
+                icon: '🏭',
+                color: '#607d8b',
+                desc: 'Buy vehicles and activate miners',
+                actions: [
+                    { itemId: 1, name: 'Car', emoji: '🚗', type: 0, priceMult: 300, desc: 'Reduces move cost' },
+                    { itemId: 15, name: 'Miner Activation', emoji: '⚡', type: 8, priceMult: 15, hasAmount: true, desc: '2x day speed' }
+                ],
+                workAction: true
+            },
+            '06': { // HEAD_HUNTERS
+                name: 'Head Hunters',
+                icon: '🎯',
+                color: '#f44336',
+                desc: 'Find or quit jobs',
+                actions: [
+                    { itemId: 23, name: 'Find Job', emoji: '🔎', type: 9, condition: 'unemployed', desc: 'Random work location' },
+                    { itemId: 24, name: 'Quit Job', emoji: '🚪', type: 10, condition: 'employed', desc: 'Become unemployed' }
+                ],
+                workAction: true
+            },
+            '07': { // HITECH_HOME
+                name: 'Hi-Tech Home',
+                icon: '🏡',
+                color: '#4caf50',
+                desc: 'Rest, eat and change clothes (house owner)',
+                actions: [
+                    { itemId: 18, name: 'Rest', emoji: '😴', type: 4, hasAmount: true, desc: '+15% happiness/hr' },
+                    { itemId: 36, name: 'Eat', emoji: '🍽️', type: 11, hasAmount: true, desc: '+4 life blocks/food' },
+                    // Dynamic clothes options will be injected by showLocationActions
+                    { isClothesMenu: true }
+                ],
+                isHome: true,
+                requiresHouse: true
+            },
+            '08': { // UNIVERSITY
+                name: 'University',
+                icon: '🎓',
+                color: '#3f51b5',
+                desc: 'Study and buy courses',
+                actions: [
+                    { itemId: 11, name: 'Educational Course', emoji: '🎓', type: 0, priceMult: 155, desc: 'Required for study' },
+                    { itemId: 19, name: 'Study', emoji: '📚', type: 5, hasAmount: true, condition: 'hasCourses', desc: 'Increase education' }
+                ],
+                workAction: true
+            },
+            '09': { // FOOD
+                name: 'Food Court',
+                icon: '🍔',
+                color: '#ff5722',
+                desc: 'Buy food supplies',
+                actions: [
+                    { itemId: 3, name: 'Food Package', emoji: '🥗', type: 0, priceMult: 150, desc: '+11 food' },
+                    { itemId: 4, name: 'Fast Food', emoji: '🍔', type: 0, priceMult: 21, desc: '+1 food, +20 happy' },
+                    { itemId: 7, name: 'Backpack', emoji: '🎒', type: 0, priceMult: 17, desc: '+10 food storage' }
+                ],
+                workAction: true
+            },
+            '0a': { // CHINATOWN
+                name: 'Chinatown',
+                icon: '🏮',
+                color: '#e53935',
+                desc: 'Buy various items',
+                actions: [
+                    { itemId: 5, name: 'Book', emoji: '📖', type: 0, priceMult: 2, desc: '+15 happiness' },
+                    { itemId: 8, name: 'USB Miner', emoji: '🔌', type: 0, priceMult: 60, desc: 'Enable miner' },
+                    { itemId: 9, name: 'Musical Instrument', emoji: '🎸', type: 0, priceMult: 15, desc: '+20 happiness' },
+                    { itemId: 10, name: 'Bicycle', emoji: '🚲', type: 0, priceMult: 30, desc: 'Reduces move cost' }
+                ],
+                workAction: true
+            },
+            '0b': { // RENT
+                name: 'Rent Office',
+                icon: '🏢',
+                color: '#795548',
+                desc: 'Pay rent to avoid penalties',
+                actions: [
+                    { itemId: 13, name: 'Pay Rent', emoji: '🏠', type: 8, priceMult: 8, hasAmount: true, desc: 'Avoid -5h penalty' },
+                    { itemId: 22, name: 'Soda Water', emoji: '🥤', type: 0, priceMult: 2, desc: '+5 happiness' }
+                ],
+                workAction: true
+            }
+        };
+
+        // Calculate price based on dailySalary (from smart contract)
+        function calculateItemPrice(priceMult, dailySalary, flags_magic = 0n) {
+            const salary = Number(dailySalary) || 30;
+            let price = Math.max(Math.floor(priceMult * salary / 10), 20);
+            // Magic effects would modify price here
+            return price;
+        }
+
+        // Get the correct home location based on house ownership
+        function getHomeLocation(hasHouse) {
+            return hasHouse ? '07' : '04'; // HiTech Home or Hostel
+        }
+
+        // For backwards compatibility
+        const ITEMS_INFO = {
+            6: { price: 35n, name: 'Sneakers' },
+            23: { price: 0n, name: 'Find Job' },
+            17: { price: 0n, name: 'Work' }
+        };
+
+        // === FLAGS DICTIONARY ===
+        const FLAGS = {
+            HAS_MINER: { bit: 1n, emoji: '🔌', name: 'USB Miner' },
+            HAS_HOUSE: { bit: 2n, emoji: '🏠', name: 'House' },
+            HAS_CAR: { bit: 4n, emoji: '🚗', name: 'Car' },
+            HAS_REFRIGERATOR: { bit: 8n, emoji: '🧊', name: 'Refrigerator' },
+            HAS_SNEAKERS: { bit: 16n, emoji: '👟', name: 'Sneakers' },
+            USE_MAGIC_CARD: { bit: 32n, emoji: '🎴', name: 'Magic Card' },
+            HAS_BICYCLE: { bit: 64n, emoji: '🚲', name: 'Bicycle' },
+            HAS_BACKPACK: { bit: 128n, emoji: '🎒', name: 'Backpack' },
+            // Clothes flags
+            HAS_BANK_CLOTHES: { bit: 256n, emoji: '🏦', name: 'Bank Uniform' },
+            HAS_FACTORY_CLOTHES: { bit: 512n, emoji: '🏭', name: 'Factory Uniform' },
+            HAS_HEADHUNTER_CLOTHES: { bit: 1024n, emoji: '🎯', name: 'Headhunter Suit' },
+            HAS_INSURANCE_CLOTHES: { bit: 2048n, emoji: '📋', name: 'Insurance Attire' },
+            HAS_HITECH_CLOTHES: { bit: 4096n, emoji: '💻', name: 'HiTech Uniform' },
+            HAS_CLOTHSHOP_CLOTHES: { bit: 8192n, emoji: '👚', name: 'Shop Uniform' },
+            HAS_FOOD_CLOTHES: { bit: 16384n, emoji: '🍽️', name: 'Food Worker' },
+            HAS_CHINATOWN_CLOTHES: { bit: 32768n, emoji: '🏮', name: 'Chinatown Attire' },
+            HAS_RENT_CLOTHES: { bit: 65536n, emoji: '🏢', name: 'Rent Office' }
+        };
+
+        // === MAGIC EFFECTS FLAGS ===
+        const MAGIC_FLAGS = {
+            EFFECT_PRODUCTIVITY_BOOST: { bit: 1n, emoji: '⚡', name: 'Productivity Boost', color: '#FFD700' },
+            EFFECT_LEARNING_VIBE: { bit: 2n, emoji: '📚', name: 'Learning Vibe', color: '#4169E1' },
+            EFFECT_MARKET_BOOM: { bit: 4n, emoji: '📈', name: 'Market Boom', color: '#32CD32' },
+            EFFECT_FOOD_DISCOUNT: { bit: 8n, emoji: '🍕', name: 'Food Discount', color: '#FF6347' },
+            EFFECT_ECONOMIC_CRISIS: { bit: 16n, emoji: '📉', name: 'Economic Crisis', color: '#DC143C' },
+            EFFECT_SAVE_HOURS: { bit: 32n, emoji: '⏰', name: 'Save Hours', color: '#00CED1' },
+            EFFECT_SOCIAL_NETWORK: { bit: 64n, emoji: '🤝', name: 'Social Network', color: '#9370DB' }
+        };
+
+        // === EXPIRATIONS (Days Left) ===
+        const EXPIRATIONS_INFO = {
+            RENT: { idx: 0, emoji: '🏠', name: 'Rent', warnAt: 3 },
+            TRAVEL_CARD: { idx: 1, emoji: '🎫', name: 'Travel Card', warnAt: 2 },
+            INVESTED_INSURANCE: { idx: 2, emoji: '💰', name: 'Investment Insurance', warnAt: 5 },
+            PROPERTY_INSURANCE: { idx: 3, emoji: '🛡️', name: 'Property Insurance', warnAt: 5 }
+        };
+
+        // --- Action Queue System ---
+        let actionQueue = [];
+        let latestConfirmedState = null; // Store the state from blockchain
+        const MAX_QUEUE_SIZE = 3;
+
+        // --- New Day Panel System ---
+        let newDayPanelActive = false;
+        let stateBeforeNewDay = null;
+
+        function showNewDayPanel(oldState, newState, txId) {
+            newDayPanelActive = true;
+            stateBeforeNewDay = oldState;
+
+            // Remove existing panel if any
+            const existingPanel = document.getElementById('newDayPanel');
+            if (existingPanel) existingPanel.remove();
+
+            // Calculate differences
+            const changes = calculateStateDifferences(oldState, newState);
+
+            // Create panel HTML
+            const panel = document.createElement('div');
+            panel.id = 'newDayPanel';
+            panel.className = 'new-day-panel';
+            panel.innerHTML = `
+                <h4>🌅 New Day Started!</h4>
+                <div class="state-changes">
+                    ${changes.map(c => `
+                        <div class="state-change-item">
+                            <span class="icon">${c.icon}</span>
+                            <div>
+                                <span class="label">${c.label}</span>
+                                <span class="value">${c.newValue}</span>
+                            </div>
+                            ${c.change !== 0 ? `<span class="change ${c.change > 0 ? 'positive' : 'negative'}">${c.change > 0 ? '+' : ''}${c.change}</span>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="tx-info">
+                    TX: <a href="https://whatsonchain.com/tx/${txId}" target="_blank">${txId.substring(0, 12)}...</a>
+                    <span style="float:right; color: #fcd34d;">Queue your first action to dismiss</span>
+                </div>
+            `;
+
+            // Insert after Location panel
+            const locationPanel = document.getElementById('locationAppPanel');
+            if (locationPanel) {
+                locationPanel.parentElement.insertBefore(panel, locationPanel.nextSibling);
+            }
+        }
+
+        function hideNewDayPanel() {
+            if (!newDayPanelActive) return;
+            newDayPanelActive = false;
+            stateBeforeNewDay = null;
+
+            const panel = document.getElementById('newDayPanel');
+            if (panel) {
+                panel.style.animation = 'fadeOut 0.3s ease-out';
+                setTimeout(() => panel.remove(), 300);
+            }
+        }
+
+        function calculateStateDifferences(oldState, newState) {
+            const changes = [];
+
+            // Define what stats to compare
+            const stats = [
+                { key: 'money', icon: '💰', label: 'Money' },
+                { key: 'happiness', icon: '😊', label: 'Happiness' },
+                { key: 'hoursLeft', icon: '⏳', label: 'Hours' },
+                { key: 'foodSupply', icon: '🍔', label: 'Food' },
+                { key: 'lifeExpirationBlock', icon: '❤️', label: 'Life Blocks' },
+                { key: 'education', icon: '🎓', label: 'Education' },
+                { key: 'career', icon: '💼', label: 'Career' }
+            ];
+
+            for (const stat of stats) {
+                const oldVal = oldState && oldState[stat.key] !== undefined ? Number(oldState[stat.key]) : 0;
+                const newVal = newState && newState[stat.key] !== undefined ? Number(newState[stat.key]) : 0;
+                const change = newVal - oldVal;
+
+                // Always show hours (it resets to 16), and any stat that changed
+                if (stat.key === 'hoursLeft' || change !== 0) {
+                    changes.push({
+                        icon: stat.icon,
+                        label: stat.label,
+                        oldValue: oldVal,
+                        newValue: newVal,
+                        change: change
+                    });
+                }
+            }
+
+            return changes;
+        }
+
+        function addToQueue(type, id, amount, name) {
+
+            // Check max size (allow updates to existing items, but not new items if full)
+
+            // For WORK(3), REST(4), STUDY(5) - increment last entry if same type
+            const incrementableTypes = [3n, 4n, 5n];
+            if (incrementableTypes.includes(type) && actionQueue.length > 0) {
+                const lastAction = actionQueue[actionQueue.length - 1];
+                if (lastAction.type === type) {
+                    // Increment the amount
+                    lastAction.amount = (lastAction.amount || 1n) + (amount || 1n);
+                    // Update the name to reflect new hours
+                    const hours = Number(lastAction.amount);
+                    const baseName = type === 3n ? 'Work' : type === 4n ? 'Rest' : 'Study';
+                    lastAction.name = `${baseName} (${hours}h)`;
+                    renderQueue();
+                    updatePreviewUI();
+                    return;
+                }
+            }
+
+            if (actionQueue.length >= MAX_QUEUE_SIZE) {
+                alert("Queue is full (Max 3 actions)");
+                return;
+            }
+
+            actionQueue.push({ type, id, amount, name });
+            renderQueue();
+            updatePreviewUI();
+        }
+
+        async function performAction(actionName) {
+            if (!currentTxId) return alert('No contract deployed');
+
+            // Constants
+            const BUY_ITEM = 0n;
+            const MOVE = 2n;
+            const WORK = 3n;
+            const FIND_JOB = 9n;
+
+            const SNEAKERS = 6n;
+            const ITEM_WORK = 17n;
+            const ITEM_FIND_JOB = 23n;
+
+            const CLOTHES_SHOP = 1n;
+            const HEAD_HUNTERS = 6n;
+
+            let newActions = [];
+
+            // Determine actions based on name
+            if (actionName === 'buySneakers') {
+                newActions.push({ type: MOVE, id: CLOTHES_SHOP, amount: 0n, name: "Move to Clothes Shop" });
+                newActions.push({ type: BUY_ITEM, id: SNEAKERS, amount: 0n, name: "Buy Sneakers" });
+            }
+            else if (actionName === 'findJob') {
+                newActions.push({ type: MOVE, id: HEAD_HUNTERS, amount: 0n, name: "Move to Headhunters" });
+                newActions.push({ type: FIND_JOB, id: ITEM_FIND_JOB, amount: 0n, name: "Find Job" });
+            }
+            else if (actionName === 'work') {
+                // Determine target move
+                let currentState = getPredictedState();
+                const targetLocHex = currentState.workLocation; // 'ff' or hex
+
+                // If unemployed, can't work
+                if (targetLocHex === 'ff') {
+                    alert("You are unemployed! Go to Headhunters to find a job first.");
+                    return;
+                }
+
+                const targetLocId = BigInt('0x' + targetLocHex);
+                const currentLocId = BigInt('0x' + currentState.currentLocation);
+
+                if (targetLocId !== currentLocId) {
+                    newActions.push({ type: MOVE, id: targetLocId, amount: 0n, name: "Move to Work" });
+                }
+                newActions.push({ type: WORK, id: ITEM_WORK, amount: 3n, name: "Work (3h)" });
+            }
+            // Direct Move (from Map Click)
+            else if (typeof actionName === 'object' && actionName.type === 'MOVE') {
+                newActions.push({ type: MOVE, id: actionName.id, amount: 0n, name: `Move to ${getLocationName(actionName.hexId)}` });
+            }
+
+            // Add to Queue
+            actionQueue.push(...newActions);
+            renderQueue();
+            updatePreviewUI();
+        }
+
+        // Calculate hour cost for each action in queue
+        function calculateQueueHourCosts() {
+            const costs = [];
+            if (!latestConfirmedState) {
+                // Default costs
+                return actionQueue.map(act => {
+                    if (act.type === 3n) return act.amount || 3n; // WORK
+                    if (act.type === 4n) return act.amount || 1n; // REST
+                    if (act.type === 5n) return act.amount || 1n; // STUDY
+                    if (act.type === 2n) return 2n; // MOVE (estimate)
+                    return 1n;
+                });
+            }
+
+            let state = { ...latestConfirmedState };
+
+            for (const action of actionQueue) {
+                let cost = 1n;
+
+                if (action.type === 2n) { // MOVE
+                    cost = calculateMoveCostClient(state, action.amount);
+                    state.currentLocation = action.amount.toString(16).padStart(2, '0');
+                } else if (action.type === 3n) { // WORK
+                    cost = action.amount || 3n;
+                } else if (action.type === 4n) { // REST
+                    cost = action.amount || 1n;
+                } else if (action.type === 5n) { // STUDY
+                    cost = action.amount || 1n;
+                } else if (action.type === 0n) { // BUY_ITEM
+                    cost = 1n;
+                    // Update flags for move cost prediction
+                    const itemId = Number(action.id);
+                    if (itemId === 6) state.flags |= FLAGS.HAS_SNEAKERS.bit;
+                    if (itemId === 10) state.flags |= FLAGS.HAS_BICYCLE.bit;
+                    if (itemId === 1) state.flags |= FLAGS.HAS_CAR.bit;
+                } else if (action.type === 8n) { // PAY_RENT
+                    cost = 1n;
+                } else {
+                    cost = 1n;
+                }
+
+                costs.push(cost);
+            }
+
+            return costs;
+        }
+
+        function renderQueue() {
+            let container = document.getElementById('queueContainer');
+            if (!container) {
+                // Create container if missing (UI Injection)
+                const locationPanel = document.getElementById('locationAppPanel');
+                if (!locationPanel) return; // Panel not ready yet
+
+                const qDiv = document.createElement('div');
+                qDiv.id = 'queueContainer';
+                qDiv.style.marginTop = '15px';
+                qDiv.style.border = '1px dashed #ccc';
+                qDiv.style.padding = '10px';
+                qDiv.style.borderRadius = '8px';
+                qDiv.style.background = '#f9f9f9';
+                qDiv.style.transition = 'all 0.3s ease';
+                locationPanel.parentElement.insertBefore(qDiv, locationPanel.nextSibling);
+                container = qDiv;
+            }
+
+            const div = document.getElementById('queueContainer');
+            if (actionQueue.length === 0) {
+                div.innerHTML = '<div style="color: #888; font-style: italic;">No actions queued. Click a location to plan your turn!</div>';
+                return;
+            }
+
+            // Calculate hour costs for each action
+            const hourCosts = calculateQueueHourCosts();
+            const totalHours = hourCosts.reduce((a, b) => a + b, 0n);
+
+            let html = `<h5 style="margin-top:0;">Action Queue <span style="color: #888; font-size: 0.8em;">(Total: ${totalHours}h)</span></h5>`;
+            html += '<div style="display:flex; flex-wrap:wrap; gap:10px;">';
+
+            actionQueue.forEach((act, idx) => {
+                let icon = '❓';
+                let style = 'background:#eee; padding:5px 10px; border-radius:15px; display:flex; align-items:center; gap:5px; font-size: 0.9em;';
+                const hourCost = hourCosts[idx];
+
+                if (act.type === 2n) { // MOVE
+                    icon = '👣';
+                    style += 'border: 1px solid #007bff; color: #007bff; background: #e3f2fd;';
+                } else if (act.type === 3n) { // WORK
+                    icon = '💼';
+                    style += 'border: 1px solid #28a745; color: #28a745; background: #e8f5e9;';
+                } else if (act.type === 0n) { // BUY
+                    icon = '🛒';
+                    style += 'border: 1px solid #ffc107; color: #856404; background: #fff3cd;';
+                } else if (act.type === 9n) { // FIND JOB
+                    icon = '🔎';
+                    style += 'border: 1px solid #17a2b8; color: #17a2b8; background: #e0f7fa;';
+                } else if (act.type === 10n) { // QUIT JOB
+                    icon = '🚪';
+                    style += 'border: 1px solid #dc3545; color: #dc3545; background: #f8d7da;';
+                } else if (act.type === 4n) { // REST
+                    icon = '😴';
+                    style += 'border: 1px solid #6f42c1; color: #6f42c1; background: #f3e8ff;';
+                } else if (act.type === 5n) { // STUDY
+                    icon = '📚';
+                    style += 'border: 1px solid #6610f2; color: #6610f2; background: #e8daff;';
+                } else if (act.type === 6n) { // INVEST
+                    icon = '📈';
+                    style += 'border: 1px solid #20c997; color: #20c997; background: #d4edda;';
+                } else if (act.type === 7n) { // WITHDRAW
+                    icon = '📉';
+                    style += 'border: 1px solid #fd7e14; color: #fd7e14; background: #ffeeba;';
+                } else if (act.type === 8n) { // PAY_RENT
+                    icon = '🏠';
+                    style += 'border: 1px solid #e83e8c; color: #e83e8c; background: #fce4ec;';
+                } else if (act.type === 1n) { // CHANGE_CLOTHES
+                    icon = '👔';
+                    style += 'border: 1px solid #795548; color: #795548; background: #efebe9;';
+                }
+
+                // Hour cost badge
+                const hourBadge = `<span style="background: rgba(0,0,0,0.1); padding: 2px 5px; border-radius: 10px; font-size: 0.75em; margin-left: 3px;">⏱${hourCost}h</span>`;
+
+                // Only show remove button if it's the last item (LIFO) or if we want to allow random (User asked for last only)
+                // "We can delete only last action , not first action."
+                const isLast = idx === actionQueue.length - 1;
+                const deleteBtn = isLast ? `<button onclick="removeFromQueue(${idx})" style="border:none; background:none; cursor:pointer; font-weight:bold; color:red; margin-left:5px;">×</button>` : '';
+
+                html += `
+                <div style="${style}" class="queue-item">
+                    <span>${icon} ${act.name.replace('Move to ', '')}</span>
+                    ${hourBadge}
+                    ${deleteBtn}
+                </div>`;
+            });
+
+            html += '</div>';
+
+            // Commit and Cancel row
+            html += `<div style="display:flex; gap:10px; margin-top: 10px;">
+                <button onclick="commitQueue()" style="flex:2; background: #28a745; font-weight: bold; box-shadow: 0 4px 6px rgba(40, 167, 69, 0.2);">Commit (${totalHours}h)</button>
+                <button onclick="clearQueue()" style="flex:1; background: #dc3545; font-weight: bold;">Cancel All</button>
+            </div>`;
+            div.innerHTML = html;
+        }
+
+        function removeFromQueue(idx) {
+            actionQueue.splice(idx, 1);
+            renderQueue();
+            updatePreviewUI();
+        }
+
+        function clearQueue() {
+            actionQueue = [];
+            renderQueue();
+            updatePreviewUI(); // This reverts state to confirmed
+        }
+
+        // --- Client-Side Prediction ---
+        function getPredictedState() {
+            // Start with confirmed state
+            if (!latestConfirmedState) return {
+                currentLocation: '04', workLocation: 'ff',
+                money: 0n, happiness: 0n, hoursLeft: 24n, foodSupply: 0n, education: 0n, career: 0n,
+                flags: 0n, flags_magic: 0n, Expirations: [0, 0, 0, 0], dailySalary: 30n,
+                lifeExpirationBlock: 100n
+            };
+
+            // Deep copy approximate state (BigInts are primitives, strings are primitives)
+            let state = { ...latestConfirmedState };
+
+            // Apply actions
+            for (const action of actionQueue) {
+                if (action.type === 2n) { // MOVE
+                    const cost = calculateMoveCostClient(state, action.amount);
+                    state.hoursLeft = state.hoursLeft - cost;
+                    state.currentLocation = action.amount.toString(16).padStart(2, '0');
+                } else if (action.type === 3n) { // WORK
+                    const hours = action.amount;
+                    state.hoursLeft -= hours;
+                    state.money += (state.dailySalary > 0n ? state.dailySalary : 30n) * hours;
+                }
+                else if (action.type === 0n) { // BUY
+                    const itemInfo = ITEMS_INFO[Number(action.id)];
+                    if (itemInfo) state.money -= itemInfo.price;
+
+                    const itemId = Number(action.id);
+                    if (itemId === 6) state.flags |= FLAGS.HAS_SNEAKERS.bit;
+                    if (itemId === 0) state.flags |= FLAGS.HAS_REFRIGERATOR.bit;
+                    if (itemId === 1) state.flags |= FLAGS.HAS_CAR.bit;
+                    if (itemId === 2) state.flags |= FLAGS.HAS_HOUSE.bit;
+                    if (itemId === 7) state.flags |= FLAGS.HAS_BACKPACK.bit;
+                    if (itemId === 8) state.flags |= FLAGS.HAS_MINER.bit;
+                    if (itemId === 9) state.flags |= FLAGS.HAS_BICYCLE.bit;
+                    if (itemId === 12) state.flags |= FLAGS.USE_MAGIC_CARD.bit;
+                }
+                else if (action.type === 1n) { // CHANGE_CLOTHES
+                    const clothesId = Number(action.id);
+                    const clothesMap = {
+                        25: FLAGS.HAS_BANK_CLOTHES,
+                        26: FLAGS.HAS_FACTORY_CLOTHES,
+                        27: FLAGS.HAS_HEADHUNTER_CLOTHES,
+                        28: FLAGS.HAS_INSURANCE_CLOTHES,
+                        29: FLAGS.HAS_HITECH_CLOTHES,
+                        30: FLAGS.HAS_CLOTHSHOP_CLOTHES,
+                        31: FLAGS.HAS_FOOD_CLOTHES,
+                        32: FLAGS.HAS_CHINATOWN_CLOTHES,
+                        33: FLAGS.HAS_RENT_CLOTHES
+                    };
+                    if (clothesMap[clothesId]) {
+                        state.flags |= clothesMap[clothesId].bit;
+                        state.currentClothes = BigInt(clothesId - 24);
+                    }
+                    state.hoursLeft -= 1n;
+                }
+                else if (action.type === 9n) { // FIND_JOB
+                    state.hoursLeft -= 1n;
+                }
+                else if (action.type === 10n) { // QUIT_JOB
+                    state.hoursLeft -= 1n;
+                    state.workLocation = 'ff';
+                }
+                else if (action.type === 11n) { // EAT
+                    const eatAmount = action.amount || 1n;
+                    state.foodSupply -= eatAmount;
+                    state.lifeExpirationBlock = (state.lifeExpirationBlock || 0n) + eatAmount * 4n;
+                    state.hoursLeft -= 1n;
+                }
+                else if (action.type === 4n) { // REST
+                    const restHours = action.amount || 1n;
+                    state.hoursLeft -= restHours;
+                    state.happiness += 20n; // REST adds happiness
+                }
+                else if (action.type === 5n) { // STUDY
+                    const studyHours = action.amount || 1n;
+                    state.hoursLeft -= studyHours;
+                }
+
+                // Clamp
+                if (state.hoursLeft < 0n) state.hoursLeft = 0n;
+                if (state.money < 0n) state.money = 0n;
+            }
+            return state;
+        }
+
+        function calculateMoveCostClient(state, toLocId) {
+            const fromLocId = BigInt('0x' + state.currentLocation);
+            const toLoc = BigInt(toLocId);
+            const MAX_LOC = 12n;
+
+            if (fromLocId == toLoc) return 1n; // Already there costs 1 hour
+
+            const clockwise = (toLoc - fromLocId + MAX_LOC) % MAX_LOC;
+            const counter = (fromLocId - toLoc + MAX_LOC) % MAX_LOC;
+            let dist = clockwise < counter ? clockwise : counter;
+
+            // Max cost 5
+            let maxCost = 5n;
+            if (dist < maxCost) maxCost = dist;
+
+            // Calculate flag reductions
+            const flags = BigInt(state.flags || 0n);
+            const expirations = state.Expirations || [0, 0, 0, 0];
+            let reduction = 0n;
+
+            // Each item reduces move cost by 1
+            if ((flags & FLAGS.HAS_SNEAKERS.bit) !== 0n) reduction += 1n;   // Sneakers
+            if ((flags & FLAGS.HAS_BICYCLE.bit) !== 0n) reduction += 1n;    // Bicycle
+            if ((flags & FLAGS.HAS_CAR.bit) !== 0n) reduction += 1n;        // Car
+            if (expirations[1] > 0) reduction += 1n;                        // Travel Card active
+
+            let final = maxCost - reduction;
+            if (final < 1n) final = 1n;
+
+            return final;
+        }
+
+        function updatePreviewUI() {
+            const state = getPredictedState();
+            renderStateHTML(state, true);
+            updateMapState(state);
+            // Update location actions panel for predicted location
+            showLocationActions(state.currentLocation.toLowerCase());
+        }
+
+        // === RENDER FLAGS PANEL ===
+        function renderFlagsPanel(flags, magicFlags = 0n, expirations = [0, 0, 0, 0]) {
+            flags = BigInt(flags || 0);
+            magicFlags = BigInt(magicFlags || 0);
+
+            let html = `
+            <div class="flags-panel">
+                <h5>🎒 Items & Equipment</h5>
+                <div class="flags-grid">
+            `;
+
+            // Item flags (first 8)
+            const itemFlags = ['HAS_MINER', 'HAS_HOUSE', 'HAS_CAR', 'HAS_REFRIGERATOR',
+                'HAS_SNEAKERS', 'USE_MAGIC_CARD', 'HAS_BICYCLE', 'HAS_BACKPACK'];
+
+            for (const key of itemFlags) {
+                const flag = FLAGS[key];
+                const isActive = (flags & flag.bit) !== 0n;
+                html += renderFlagItem(flag, isActive);
+            }
+
+            html += `</div>
+                <h5 style="margin-top: 12px;">👔 Uniforms</h5>
+                <div class="flags-grid">
+            `;
+
+            // Clothes flags
+            const clothesFlags = ['HAS_BANK_CLOTHES', 'HAS_FACTORY_CLOTHES', 'HAS_HEADHUNTER_CLOTHES',
+                'HAS_INSURANCE_CLOTHES', 'HAS_HITECH_CLOTHES', 'HAS_CLOTHSHOP_CLOTHES',
+                'HAS_FOOD_CLOTHES', 'HAS_CHINATOWN_CLOTHES', 'HAS_RENT_CLOTHES'];
+
+            for (const key of clothesFlags) {
+                const flag = FLAGS[key];
+                const isActive = (flags & flag.bit) !== 0n;
+                html += renderFlagItem(flag, isActive);
+            }
+
+            html += `</div>
+                <h5 style="margin-top: 12px;">✨ Active Effects</h5>
+                <div class="flags-grid">
+            `;
+
+            // Magic effects
+            for (const [key, effect] of Object.entries(MAGIC_FLAGS)) {
+                const isActive = (magicFlags & effect.bit) !== 0n;
+                html += `
+                    <div class="effect-item" title="${effect.name}" style="
+                        background: ${isActive ? effect.color + '30' : '#1a202c'};
+                        border: 2px solid ${isActive ? effect.color : '#4a5568'};
+                        opacity: ${isActive ? '1' : '0.3'};
+                        filter: ${isActive ? 'none' : 'grayscale(100%)'};
+                    ">
+                        ${effect.emoji}
+                    </div>
+                `;
+            }
+
+            html += `</div>
+                <h5 style="margin-top: 12px;">📅 Expirations</h5>
+                <div class="flags-grid">
+            `;
+
+            // Expirations
+            for (const [key, exp] of Object.entries(EXPIRATIONS_INFO)) {
+                const daysLeft = Number(expirations[exp.idx] || 0);
+                const isActive = daysLeft > 0;
+                const isWarning = daysLeft > 0 && daysLeft <= exp.warnAt;
+
+                html += `
+                    <div class="expiration-item ${isWarning ? 'warning' : ''}" title="${exp.name}" style="
+                        background: ${isWarning ? '#744210' : (isActive ? '#1c4532' : '#1a202c')};
+                        border: 1px solid ${isWarning ? '#d69e2e' : (isActive ? '#38a169' : '#4a5568')};
+                        opacity: ${isActive ? '1' : '0.4'};
+                        filter: ${isActive ? 'none' : 'grayscale(100%)'};
+                    ">
+                        ${exp.emoji} <span style="color: ${isWarning ? '#fbd38d' : '#fff'};">${daysLeft}d</span>
+                    </div>
+                `;
+            }
+
+            html += `</div></div>`;
+            return html;
+        }
+
+        function renderFlagItem(flag, isActive) {
+            return `
+                <div class="flag-item ${isActive ? 'active' : 'inactive'}" title="${flag.name}" style="
+                    background: ${isActive ? '#2d3748' : '#1a202c'};
+                    border: 2px solid ${isActive ? '#48bb78' : '#4a5568'};
+                    opacity: ${isActive ? '1' : '0.3'};
+                    filter: ${isActive ? 'none' : 'grayscale(100%)'};
+                    ${isActive ? 'box-shadow: 0 0 10px rgba(72, 187, 120, 0.3);' : ''}
+                ">
+                    ${flag.emoji}
+                </div>
+            `;
+        }
+
+        function renderStateHTML(state, isPreview = false) {
+            const locationName = getLocationName(state.currentLocation);
+            const workLocName = getLocationName(state.workLocation);
+            const title = isPreview
+                ? `<div style="color: #ff9800; font-size:0.85em; margin-bottom:8px; display:flex; align-items:center; gap:5px;">🔮 <strong>Predicted</strong></div>`
+                : `<div style="font-size:0.85em; margin-bottom:8px;"><strong>Current State</strong></div>`;
+            const bg = isPreview ? 'rgba(255, 152, 0, 0.1)' : 'transparent';
+            const border = isPreview ? '1px solid rgba(255, 152, 0, 0.3)' : 'none';
+
+            // Get flags panel HTML
+            const flagsHtml = renderFlagsPanel(
+                state.flags || 0n,
+                state.flags_magic || 0n,
+                state.Expirations || [0, 0, 0, 0]
+            );
+
+            // Update hours pie chart
+            updateHoursPie(Number(state.hoursLeft));
+
+            const hoursStyle = state.hoursLeft < 5n ? 'color:#ef4444;' : '';
+
+            const div = document.getElementById('gameState');
+            div.innerHTML = `
+                <div style="background:${bg}; border:${border}; padding:8px; border-radius:8px; transition: all 0.3s;">
+                    ${title}
+                    <div class="stats-grid">
+                        <div class="stats-item">
+                            <span class="stat-icon">📍</span>
+                            <span class="stat-value" style="font-size:0.8em;">${locationName.replace('_', ' ').substring(0, 8)}</span>
+                        </div>
+                        <div class="stats-item">
+                            <span class="stat-icon">💼</span>
+                            <span class="stat-value" style="font-size:0.8em;">${workLocName.replace('_', ' ').substring(0, 8)}</span>
+                        </div>
+                        <div class="stats-item">
+                            <span class="stat-icon">💰</span>
+                            <span class="stat-value">$${state.money.toString()}</span>
+                        </div>
+                        <div class="stats-item">
+                            <span class="stat-icon">😊</span>
+                            <span class="stat-value">${state.happiness.toString()}</span>
+                        </div>
+                        <div class="stats-item">
+                            <span class="stat-icon">⏳</span>
+                            <span class="stat-value" style="${hoursStyle}">${state.hoursLeft.toString()}h</span>
+                        </div>
+                        <div class="stats-item">
+                            <span class="stat-icon">🍔</span>
+                            <span class="stat-value">${state.foodSupply ? state.foodSupply.toString() : '0'}</span>
+                        </div>
+                        <div class="stats-item">
+                            <span class="stat-icon">❤️</span>
+                            <span class="stat-value" title="Life Balance: ${state.lifeExpirationBlock || 0} blocks (~${Math.floor(Number(state.lifeExpirationBlock || 0) / 6)}h ${(Number(state.lifeExpirationBlock || 0) % 6) * 10}m)" style="${Number(state.lifeExpirationBlock || 0) < 12 ? 'color:#ef4444;' : ''}">${formatLifeBlocks(state.lifeExpirationBlock)}</span>
+                        </div>
+                        <div class="stats-item">
+                            <span class="stat-icon">🎓</span>
+                            <span class="stat-value">${state.education.toString()}</span>
+                        </div>
+                        <div class="stats-item">
+                            <span class="stat-icon">📈</span>
+                            <span class="stat-value">${state.career.toString()}</span>
+                        </div>
+                    </div>
+                    ${flagsHtml}
+                    
+                    <!-- Market / Owner Controls -->
+                    <div class="market-panel">
+                        <div style="font-size:0.8em; font-weight:bold; margin-bottom:5px; color: var(--text-secondary);">🏷️ Market Contract</div>
+                        ${renderMarketControls(state)}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderMarketControls(state) {
+            const price = state.contractPrice || 0n;
+            // We can't easily check if we are owner purely from state without pubkey comparison
+            // But normally UI implies we are the player if we loaded it? 
+            // Actually, anyone can load any contract.
+            // However, to SIGN we need to be owner.
+
+            // Simple input for now
+            return `
+            <div style="display:flex; gap:5px; align-items:center;">
+                <input type="number" id="contractPriceInput" placeholder="Price" value="${price > 0n ? price : ''}" style="width:70px; padding:4px; font-size:0.8em;">
+                <button onclick="setPriceAction()" style="padding:4px 8px; font-size:0.8em; background:#4b5563;">Set Price</button>
+                <button onclick="buyContractAction()" style="padding:4px 8px; font-size:0.8em; background:#10b981;" ${price <= 0n ? 'disabled' : ''}>Buy (${price})</button>
+            <div style="margin-top: 8px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 8px;">
+                <div style="font-size:0.75em; font-weight:bold; margin-bottom:5px; color: var(--text-secondary);">📥 Buy External Contract</div>
+                <div style="display:flex; gap:5px; align-items:center;">
+                    <input type="text" id="externalTxIdInput" placeholder="TXID to buy..." style="width:100px; padding:4px; font-size:0.8em; flex:1;">
+                    <button onclick="buyExternalContractAction()" style="padding:4px 8px; font-size:0.8em; background:#6366f1;">Load & Buy</button>
+                </div>
+            </div>
+           `;
+        }
+
+        async function buyExternalContractAction() {
+            const txId = document.getElementById('externalTxIdInput').value.trim();
+            if (!txId) return alert("Enter TXID");
+
+            if (confirm(`Attempt to buy contract from TXID: ${txId}? Ensure you have checked it on explorer first.`)) {
+                await loadContract(txId, txId); // Load checks price inside state, buyContractAction will then use currentTxId
+
+                // Wait for load? loadContract is async.
+                // After load, UI updates. User can then click "Buy" button in main panel which is now enabled if price > 0.
+                alert("Contract loaded. If price is set, click 'Buy' button.");
+            }
+        }
+
+        async function setPriceAction() {
+            const price = document.getElementById('contractPriceInput').value;
+            if (!price) return alert("Enter price");
+            const newPrice = BigInt(price);
+
+            try {
+                if (!currentTxId) return;
+                // Use fromTx directly to avoid stale spend-chain tracking
+                const txHex = await provider.getTransaction(currentTxId);
+                const bsvTx = new scrypt.bsv.Transaction(typeof txHex === 'string' ? txHex : (txHex.hex || txHex));
+                const instance = GameContract.fromTx(bsvTx, 0);
+                await instance.connect(signer);
+
+                const pubKey = await signer.getDefaultPubKey();
+                const changeAddress = await signer.getDefaultAddress();
+
+                const { tx } = await instance.methods.setContractPrice(
+                    (sigResps) => scrypt.findSig(sigResps, pubKey),
+                    scrypt.PubKey(pubKey.toString()),
+                    newPrice,
+                    {
+                        pubKeyOrAddrToSign: pubKey,
+                        changeAddress: changeAddress,
+                        transfer: instance.next()
+                    }
+                );
+
+                log(`Price Set TX: ${tx.id}`);
+                currentTxId = tx.id;
+                saveToHistory(currentTxId, currentDeploymentId);
+                await updateGameState();
+
+            } catch (e) {
+                log(`Error setting price: ${e.message}`);
+            }
+        }
+
+        async function buyContractAction() {
+            try {
+                if (!currentTxId) return;
+                // Use fromTx directly to avoid stale spend-chain tracking
+                const txHex = await provider.getTransaction(currentTxId);
+                const bsvTx = new scrypt.bsv.Transaction(typeof txHex === 'string' ? txHex : (txHex.hex || txHex));
+                const instance = GameContract.fromTx(bsvTx, 0);
+                await instance.connect(signer);
+
+                const pubKey = await signer.getDefaultPubKey();
+                const changeAddress = await signer.getDefaultAddress();
+
+                const { tx } = await instance.methods.buyContract(
+                    (sigResps) => scrypt.findSig(sigResps, pubKey),
+                    scrypt.PubKey(pubKey.toString()),
+                    {
+                        pubKeyOrAddrToSign: pubKey,
+                        changeAddress: changeAddress,
+                        transfer: instance.next()
+                    }
+                );
+
+                log(`Contract Bought! TX: ${tx.id}`);
+                currentTxId = tx.id;
+                saveToHistory(currentTxId, currentDeploymentId);
+                await updateGameState();
+
+            } catch (e) {
+                log(`Error buying contract: ${e.message}`);
+            }
+        }
+
+        // Format lifeExpirationBlock as human-readable time (blocks = 10-minute units)
+        function formatLifeBlocks(blocks) {
+            const b = Number(blocks || 0);
+            if (b <= 0) return '0';
+            const hours = Math.floor(b / 6);
+            const mins = (b % 6) * 10;
+            if (hours > 0 && mins > 0) return `${hours}h${mins}m`;
+            if (hours > 0) return `${hours}h`;
+            return `${mins}m`;
+        }
+
+        function updateHoursPie(hoursLeft) {
+            const maxHours = 24;
+            const pct = Math.min(100, Math.max(0, (hoursLeft / maxHours) * 100));
+            const pie = document.getElementById('hoursPie');
+            const value = document.getElementById('hoursPieValue');
+            if (pie && value) {
+                pie.style.setProperty('--hours-pct', `${pct}%`);
+                value.textContent = hoursLeft;
+                // Color based on hours left
+                if (hoursLeft <= 5) {
+                    pie.style.background = `conic-gradient(#ef4444 ${pct}%, #374151 ${pct}%)`;
+                } else if (hoursLeft <= 10) {
+                    pie.style.background = `conic-gradient(#f59e0b ${pct}%, #374151 ${pct}%)`;
+                } else {
+                    pie.style.background = `conic-gradient(#22c55e ${pct}%, #374151 ${pct}%)`;
+                }
+            }
+        }
+
+        async function commitQueue() {
+            if (actionQueue.length === 0) return;
+            if (!currentTxId) return;
+
+            const btn = document.querySelector('#queueContainer button');
+            if (btn) { btn.disabled = true; btn.innerText = "Committing..."; }
+
+            try {
+                // Fetch from specific TX directly (not getLatestInstance which follows spend chain and can return stale/unconfirmed state)
+                // const instance = await scrypt.Scrypt.contractApi.getLatestInstance(GameContract, { txId: currentTxId, outputIndex: 0 });
+                const txHex = await provider.getTransaction(currentTxId);
+                const bsvTx = new scrypt.bsv.Transaction(typeof txHex === 'string' ? txHex : (txHex.hex || txHex));
+                const instance = GameContract.fromTx(bsvTx, 0);
+                await instance.connect(signer);
+                const nextInstance = instance.next();
+
+                // Build actions array, items array, and proofs array for Tamagochi_v2
+                // Each action is packed as: ActionType(1 byte) + Amount(1 byte)
+                const EMPTY_ACTION = scrypt.toByteString('', false);
+                const EMPTY_ITEM = {
+                    id: 0,
+                    name: scrypt.toByteString('', true),
+                    actionType: 0,
+                    priceDaySalary: 0n,
+                    possibleLocations: scrypt.toByteString('', true),
+                    valuesToChange: scrypt.toByteString('', true)
+                };
+                const EMPTY_PROOF = {
+                    index: 0n,
+                    siblings: Array(6).fill(scrypt.toByteString('00'.repeat(32), false))
+                };
+
+                const actionsArr = [];
+                const itemsArr = [];
+                const proofsArr = [];
+
+                for (let i = 0; i < 3; i++) {
+                    if (i < actionQueue.length) {
+                        const action = actionQueue[i];
+                        const itemIndex = Number(action.id);
+                        const item = ITEMS_DB[itemIndex];
+                        const proof = itemsTree.getProof(itemIndex);
+
+                        actionsArr.push(
+                            scrypt.int2ByteString(action.type, 1n) +
+                            scrypt.int2ByteString(action.amount, 1n)
+                        );
+                        itemsArr.push(item);
+                        proofsArr.push(proof);
+                    } else {
+                        actionsArr.push(EMPTY_ACTION);
+                        itemsArr.push(EMPTY_ITEM);
+                        proofsArr.push(EMPTY_PROOF);
+                    }
+                }
+
+                // Apply ALL actions to local state for the next instance
+                console.log('[DEBUG] === Pre-simulation state ===');
+                console.log('[DEBUG] instance.packedGameState:', instance.packedGameState);
+                console.log('[DEBUG] instance.isRandomEventDue:', instance.isRandomEventDue);
+                console.log('[DEBUG] instance.lastRandomSeed:', instance.lastRandomSeed);
+                console.log('[DEBUG] instance.playerPubKeyHash:', instance.playerPubKeyHash);
+                console.log('[DEBUG] instance.itemsRoot:', instance.itemsRoot);
+                console.log('[DEBUG] Local itemsRoot:', itemsRoot);
+
+                // Verify key match
+                const pubKey = await signer.getDefaultPubKey();
+                const myPKH = scrypt.hash160(scrypt.toByteString(pubKey.toString(), false));
+                console.log('[DEBUG] My PubKeyHash:', myPKH);
+                console.log('[DEBUG] Key match:', myPKH === instance.playerPubKeyHash);
+
+                // Verify itemsRoot match
+                if (instance.itemsRoot !== scrypt.Sha256(itemsRoot)) {
+                    console.error('[DEBUG] !!! ITEMS ROOT MISMATCH !!!');
+                    console.error('[DEBUG] Contract:', instance.itemsRoot);
+                    console.error('[DEBUG] Local:', itemsRoot);
+                }
+
+                for (const action of actionQueue) {
+                    const itemIndex = Number(action.id);
+                    const item = ITEMS_DB[itemIndex];
+                    console.log(`[DEBUG] Applying action: type=${action.type}, id=${action.id}, amount=${action.amount}, itemName=${item?.name}`);
+                    nextInstance.performActionState(action.type, action.id, action.amount, item);
+                    console.log(`[DEBUG] After action - packedGameState: ${nextInstance.packedGameState}`);
+                }
+
+                console.log('[DEBUG] === Post-simulation state ===');
+                console.log('[DEBUG] nextInstance.packedGameState:', nextInstance.packedGameState);
+                console.log('[DEBUG] nextInstance.isRandomEventDue:', nextInstance.isRandomEventDue);
+                console.log('[DEBUG] nextInstance.lastRandomSeed:', nextInstance.lastRandomSeed);
+
+                log(`Committing ${actionQueue.length} actions...`);
+                console.log('[DEBUG] Action Queue:', JSON.stringify(actionQueue));
+                console.log('[DEBUG] Actions Hex:', actionsArr.map(a => scrypt.toHex(a)));
+                console.log('[DEBUG] Items:', itemsArr.map(i => ({ id: i.id, actionType: i.actionType, name: i.name })));
+                console.log('[DEBUG] Proofs:', proofsArr.map(p => ({ index: p.index, siblings: p.siblings.map(s => s.substring(0, 8) + '...') })));
+
+                // Verify Merkle proofs locally
+                for (let i = 0; i < actionsArr.length; i++) {
+                    if (scrypt.len(actionsArr[i]) > 0) {
+                        const item = itemsArr[i];
+                        const proof = proofsArr[i];
+                        const itemPacked = scrypt.int2ByteString(BigInt(item.id), 1n) +
+                            item.name +
+                            scrypt.int2ByteString(BigInt(item.actionType), 1n) +
+                            scrypt.int2ByteString(item.priceDaySalary, 32n) +
+                            scrypt.int2ByteString(BigInt(item.possibleLocations.length / 2), 1n) + item.possibleLocations +
+                            scrypt.int2ByteString(BigInt(item.valuesToChange.length / 2), 2n) + item.valuesToChange;
+                        const leafHash = scrypt.hash256(itemPacked);
+                        let h = leafHash;
+                        let pos = proof.index;
+                        for (let j = 0; j < 6; j++) {
+                            const sibling = proof.siblings[j];
+                            if (pos % 2n === 0n) {
+                                h = scrypt.hash256(h + sibling);
+                            } else {
+                                h = scrypt.hash256(sibling + h);
+                            }
+                            pos /= 2n;
+                        }
+                        console.log(`[DEBUG] Merkle verify item ${i}: root=${h}, match=${h === instance.itemsRoot}`);
+                    }
+                }
+
+                // Local dry-run: simulate the on-chain method to catch assertion failures
+                // NOTE: processAction modifies this.isRandomEventDue, so save/restore it
+                try {
+                    console.log('[DEBUG] === Local dry-run of performActionPacked ===');
+                    const savedIsRandomEventDue = instance.isRandomEventDue;
+
+                    let dryState = instance.unpackState(instance.packedGameState);
+                    for (let i = 0; i < 3; i++) {
+                        if (scrypt.len(actionsArr[i]) > 0) {
+                            const actionType = scrypt.Utils.fromLEUnsigned(scrypt.slice(actionsArr[i], 0n, 1n));
+                            const amount = scrypt.Utils.fromLEUnsigned(scrypt.slice(actionsArr[i], 1n, 2n));
+                            dryState = instance.processAction(dryState, actionType, itemsArr[i], amount);
+                        }
+                    }
+
+                    // Restore isRandomEventDue (processAction may have modified it)
+                    instance.isRandomEventDue = savedIsRandomEventDue;
+
+                    const dryPackedState = instance.packState(dryState);
+                    console.log('[DEBUG] DryRun final packed state:', dryPackedState);
+                    console.log('[DEBUG] nextInstance packed state:', nextInstance.packedGameState);
+
+                    if (dryPackedState !== nextInstance.packedGameState) {
+                        console.error('[DEBUG] !!! STATE MISMATCH between dry-run and nextInstance !!!');
+                        console.error('[DEBUG] This WILL cause hashOutputs failure on-chain');
+                        throw new Error("State Mismatch");
+                    }
+                } catch (dryErr) {
+                    console.error('[DEBUG] DRY-RUN FAILED:', dryErr.message);
+                    // Ensure isRandomEventDue is not left in corrupted state
+                    // (will be reloaded from TX on next attempt anyway)
+                }
+
+                // Explicitly set the nextInstance properties to match requirements
+                // nextInstance should have the NEW state but same collateral/properties as previous unless changed
+
+                const { tx } = await instance.methods.performActionPacked(
+                    (sigResps) => scrypt.findSig(sigResps, pubKey),
+                    scrypt.PubKey(pubKey.toString()),
+                    actionsArr,
+                    itemsArr,
+                    proofsArr,
+                    {
+                        pubKeyOrAddrToSign: pubKey,
+                        changeAddress: await signer.getDefaultAddress(),
+                        // Cruciaal: transfer must be the nextInstance with correct state output
+                        transfer: nextInstance,
+                    }
+                );
+
+                log(`Batch TXID: ${tx.id}`);
+                currentTxId = tx.id;
+                document.getElementById('contractId').textContent = currentTxId;
+
+                saveToHistory(currentTxId, currentDeploymentId);
+                // Clear queue
+                actionQueue = [];
+                renderQueue();
+                await updateGameState(); // Updates confirmed state
+
+                // Hide new day panel after first successful action commit
+                hideNewDayPanel();
+
+            } catch (e) {
+                log(`Commit failed: ${e.message}`);
+                console.error(e);
+                // Reset cached instance to force fresh load next time
+                contractInstance = null;
+                if (btn) { btn.disabled = false; btn.innerText = "Commit Actions"; }
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerText = "Commit Actions"; }
+            }
+        }
+        // -----------------------------
+
+        // Helper to manually unpack state (fixes prototype/context issues with instance method)
+        // Helper to manually unpack state (robust to compact vs 4-byte layouts)
+        function unpackStateStatic(packedState) {
+            const slice = scrypt.slice;
+            const byteString2Int = scrypt.byteString2Int || scrypt.Utils.fromLEUnsigned;
+
+            // Detect layout based on length:
+            // Compact is approximately 46 bytes (92 hex chars).
+            // New (4-byte) is 86 bytes (172 hex chars).
+            const dataLen = scrypt.len(packedState);
+            const isCompact = dataLen < 80n;
+
+            let pos = 0n;
+            const gState = {};
+
+            const readInt = (size) => {
+                if (pos + size > dataLen) {
+                    // Fallback for truncated/old data
+                    return 0n;
+                }
+                const val = byteString2Int(slice(packedState, pos, pos + size));
+                pos += size;
+                return val;
+            };
+
+            if (isCompact) {
+                console.log("[Unpack] Detected OLD Compact State Layout (" + dataLen + " bytes)");
+                gState.money = readInt(3n);
+                gState.happiness = readInt(2n);
+                gState.currentLesson = readInt(1n);
+                gState.education = readInt(1n);
+                gState.career = readInt(1n);
+                gState.hoursLeft = readInt(1n);
+                gState.maxHappiness = readInt(2n);
+                gState.maxLessons = readInt(1n);
+                gState.foodSupply = readInt(1n);
+                gState.currentClothes = readInt(1n);
+                gState.flags = readInt(3n);
+                gState.flags_magic = readInt(2n);
+                gState.educationalCourseCnt = readInt(1n);
+                gState.jobCount = readInt(1n);
+                gState.currentLocation = (pos + 1n <= dataLen) ? slice(packedState, pos, pos + 1n) : scrypt.toByteString('04', false); pos += 1n;
+                gState.workLocation = (pos + 1n <= dataLen) ? slice(packedState, pos, pos + 1n) : scrypt.toByteString('ff', false); pos += 1n;
+                gState.investedMoney = readInt(4n);
+                gState.dailySalary = readInt(3n);
+                gState.Expirations = [readInt(4n), readInt(4n), readInt(4n), readInt(4n)];
+                gState.lifeExpirationBlock = 0n;
+            } else {
+                // Standard 4-byte layout
+                gState.money = readInt(4n);
+                gState.happiness = readInt(4n);
+                gState.currentLesson = readInt(4n);
+                gState.education = readInt(4n);
+                gState.career = readInt(4n);
+                gState.hoursLeft = readInt(4n);
+                gState.maxHappiness = readInt(4n);
+                gState.maxLessons = readInt(4n);
+                gState.foodSupply = readInt(4n);
+                gState.currentClothes = readInt(4n);
+                gState.flags = readInt(4n);
+                gState.flags_magic = readInt(4n);
+                gState.educationalCourseCnt = readInt(4n);
+                gState.jobCount = readInt(4n);
+                gState.currentLocation = (pos + 1n <= dataLen) ? slice(packedState, pos, pos + 1n) : scrypt.toByteString('04', false); pos += 1n;
+                gState.workLocation = (pos + 1n <= dataLen) ? slice(packedState, pos, pos + 1n) : scrypt.toByteString('ff', false); pos += 1n;
+                gState.investedMoney = readInt(4n);
+                gState.dailySalary = readInt(4n);
+                gState.Expirations = [];
+                for (let i = 0; i < 4; i++) {
+                    gState.Expirations.push(readInt(4n));
+                }
+                gState.lifeExpirationBlock = readInt(4n);
+            }
+
+            return gState;
+        }
+
+        async function updateGameState() {
+            if (!currentTxId) return;
+            let instance;
+            // Always load from specific TX directly to avoid stale spend-chain tracking
+            try {
+                const tx = await provider.getTransaction(currentTxId);
+                const txHex = typeof tx === 'string' ? tx : (tx.hex || tx);
+                const bsvTx = new scrypt.bsv.Transaction(txHex);
+                instance = GameContract.fromTx(bsvTx, 0);
+            } catch (e) {
+                console.error("updateGameState: Failed to load contract:", e);
+                return;
+            }
+
+            // Ensure instance is set or handle error
+            if (instance) {
+                try {
+                    // Unpack state
+                    const state = unpackStateStatic(instance.packedGameState);
+                    latestConfirmedState = state; // Store for prediction baseline
+
+                    // Render Confirmed
+                    renderStateHTML(state, false);
+                    updateMapState(state);
+
+                    // Update location app panel
+                    showLocationActions(state.currentLocation.toLowerCase());
+
+                    // --- Hours Left / End of Day Logic ---
+                    console.log(`Debug: hoursLeft = ${state.hoursLeft} (Type: ${typeof state.hoursLeft})`);
+
+                    if (state.hoursLeft <= 0n) {
+                        // Activate Block Wait Overlay
+                        document.getElementById('blockWaitOverlay').classList.add('active');
+
+                        // Update overlay link
+                        const link = document.getElementById('overlayTxLink');
+                        if (link && currentTxId) {
+                            link.href = `https://whatsonchain.com/tx/${currentTxId}`;
+                            link.innerText = `View Last TX (${currentTxId.substring(0, 8)}...)`;
+                        }
+
+                        // Auto-check logic
+                        document.getElementById('blockCheckStatus').innerText = "Waiting for user start (Manual Mode)";
+                    } else {
+                        document.getElementById('blockWaitOverlay').classList.remove('active');
+                    }
+
+                    // If queue is not empty, re-render prediction on top?
+                    if (actionQueue.length > 0) {
+                        updatePreviewUI();
+                    }
+                } catch (parseError) {
+                    console.error("State unpacking failed:", parseError);
+                }
+            }
+        }
+
+        // Helper for Location Names
+        function getLocationName(hexId) {
+            const loc = LOCATIONS.find(l => l.id.toLowerCase() === hexId.toLowerCase());
+            return loc ? loc.name : (hexId === 'ff' ? 'Unemployed' : 'Unknown');
+        }
+
+        // --- Smart Contract Recovery ---
+
+        // precise-bulk-fetch helper
+        async function fetchBulkTxHex(txids) {
+            const url = 'https://api.whatsonchain.com/v1/bsv/main/txs/hex';
+            // Use corsproxy to ensure it works from file:// and avoids CORS issues
+            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+
+            try {
+                const resp = await fetch(proxyUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ txids })
+                });
+
+                if (!resp.ok) {
+                    console.warn(`Bulk fetch status: ${resp.status}`);
+                    return [];
+                }
+
+                // WOC returns array of { txid, hex, error? }
+                return await resp.json();
+            } catch (e) {
+                console.error("Bulk fetch error:", e);
+                return [];
+            }
+        }
+
+        // --- Smart Contract Recovery ---
+
+        // precise-bulk-fetch helper
+        // precise-bulk-fetch helper
+        async function fetchBulkTxHex(txids) {
+            const url = 'https://api.whatsonchain.com/v1/bsv/main/txs/hex';
+
+            // Helper to try fetch
+            const tryFetch = async (fetchUrl) => {
+                const resp = await fetch(fetchUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ txids })
+                });
+                if (!resp.ok) throw new Error(`Status ${resp.status}`);
+                return await resp.json();
+            };
+
+            try {
+                // 1. Try Direct first (works if API allows CORS or on same origin)
+                try {
+                    return await tryFetch(url);
+                } catch (directErr) {
+                    console.warn(`Direct bulk fetch failed (${directErr.message}), trying proxy...`);
+
+                    // 2. Fallback to Proxy
+                    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+                    return await tryFetch(proxyUrl);
+                }
+            } catch (e) {
+                console.error("Bulk fetch error (final):", e);
+                return [];
+            }
+        }
+
+        async function scanForContracts() {
+            if (!signer) return alert("Connect wallet first!");
+            const btn = document.getElementById('btnScan');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = "Scanning History (Deep)...";
+            }
+
+            try {
+                const address = await signer.getDefaultAddress();
+                log(`Scanning history for: ${address}`);
+
+                // Fetch transaction history (Whatsonchain API)
+                const resp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${address}/history`);
+                const history = await resp.json();
+
+                // Sort logic: 
+                // Unconfirmed (height <= 0) should be conceptually "infinite" height (newest)
+                // Confirmed sorted by height descending.
+                history.sort((a, b) => {
+                    const hA = a.height <= 0 ? Number.MAX_SAFE_INTEGER : a.height;
+                    const hB = b.height <= 0 ? Number.MAX_SAFE_INTEGER : b.height;
+                    return hB - hA;
+                });
+
+                // Increase scan depth to 50 to catch games even if there's other activity
+                const limit = 50;
+                const recent = history.slice(0, limit);
+
+                log(`Found ${history.length} txs. Scanning top ${recent.length}...`);
+
+                let foundCount = 0;
+                let uniqueGames = 0;
+                const seenSeeds = new Set();
+
+                // Extract IDs from recent history
+                const txIdsToFetch = recent.map(item => item.tx_hash);
+                const BATCH_SIZE = 20; // WOC Limit
+
+                // Process in batches
+                for (let i = 0; i < txIdsToFetch.length; i += BATCH_SIZE) {
+                    const batchIds = txIdsToFetch.slice(i, i + BATCH_SIZE);
+                    // log(`Checking batch ${Math.floor(i/BATCH_SIZE) + 1}...`);
+
+                    try {
+                        const bulkResults = await fetchBulkTxHex(batchIds);
+
+                        for (const res of bulkResults) {
+                            if (!res || !res.hex || res.error) continue;
+
+                            const txId = res.txid;
+                            const txHex = res.hex;
+                            try {
+                                const bsvTx = new scrypt.bsv.Transaction(txHex);
+                                // Check Output 0
+                                const instance = GameContract.fromTx(bsvTx, 0);
+
+                                // Parse successful - it's a game tx
+                                let seed = "unknown";
+                                try {
+                                    // Identify Game Session by FACTORY_ADDRESS (Timestamp ID)
+                                    // defined as @prop() so it is immutable and unique per deployment
+                                    seed = instance.FACTORY_ADDRESS;
+                                } catch (e) {
+                                    console.warn("Could not read FACTORY_ADDRESS", e);
+                                }
+
+                                if (!seenSeeds.has(seed)) {
+                                    // New Game identified (Latest state for this seed because we scan newest first)
+                                    seenSeeds.add(seed);
+                                    uniqueGames++;
+
+                                    log(`Found Game HEAD (ID ${seed}...): ${txId}`);
+                                    // Use seed as deploymentId to group unique sessions
+                                    saveToHistory(txId, seed);
+                                } else {
+                                    // We already have a newer state for this game
+                                    // log(`Found history state for Game ${seed.substring(0,6)}... (${txId})`);
+                                }
+
+                                foundCount++;
+
+                            } catch (parseErr) {
+                                // DEBUG: Log why it failed to help diagnose "Found 0 games"
+                                // If it mentions mistmatch, it's critical info
+                                if (parseErr.message && (parseErr.message.includes('mismatch') || parseErr.message.includes('check failed'))) {
+                                    // log(`[Scan Debug] TX ${txId.substring(0,8)}... skipped: ${parseErr.message}`);
+                                }
+                            }
+                        }
+                    } catch (batchErr) {
+                        console.error("Batch error:", batchErr);
+                        log("Batch fetch failed, skipping...");
+                    }
+
+                    // Polite delay between batches
+                    if (i + BATCH_SIZE < txIdsToFetch.length) await new Promise(r => setTimeout(r, 200));
+                }
+
+                log(`Scan complete. Found ${foundCount} total txs, representing ${uniqueGames} unique games.`);
+
+            } catch (e) {
+                log(`Scan Error: ${e.message}`);
+                console.error(e);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = "Scan Wallet for Games";
+                }
+            }
+        }
+
+        // --- Time & Merkle Proof Logic ---
+        async function checkTimeEvent() {
+            if (!currentTxId) return;
+            let instance;
+
+            // Always use fromTx directly to avoid stale spend-chain tracking
+            try {
+                const tx = await provider.getTransaction(currentTxId);
+                const txHex = typeof tx === 'string' ? tx : (tx.hex || tx);
+                const bsvTx = new scrypt.bsv.Transaction(txHex);
+                instance = GameContract.fromTx(bsvTx, 0);
+            } catch (e) {
+                console.error("checkTimeEvent: Failed to load contract:", e);
+                return;
+            }
+
+            if (!instance) return;
+
+            try {
+                if (instance.isRandomEventDue) {
+                    log("New day is due. Attempting to trigger...");
+                    await triggerTimeEvent(instance);
+                }
+            } catch (e) {
+                console.warn("Error checking state props:", e);
+            }
+        }
+
+        // Manual Trigger for Overlay Button
+        async function manualCheckTimeEvent() {
+            const btn = document.getElementById('btnNewDay');
+            const status = document.getElementById('blockCheckStatus');
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+
+            try {
+                status.innerText = "Connecting to contract...";
+
+                // Always load fresh from specific TX to avoid stale state
+                const txHex = await provider.getTransaction(currentTxId);
+                const bsvTx = new scrypt.bsv.Transaction(typeof txHex === 'string' ? txHex : (txHex.hex || txHex));
+                const instance = GameContract.fromTx(bsvTx, 0);
+                contractInstance = instance;
+
+                status.innerText = "Checking block confirmation...";
+
+                // Reuse trigger logic with status updates
+                await triggerTimeEvent(contractInstance, (msg) => {
+                    status.innerText = msg;
+                });
+
+            } catch (e) {
+                status.innerText = "Error: " + e.message;
+                console.error(e);
+            } finally {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+            }
+        }
+
+        async function triggerTimeEvent(instance, statusCallback) {
+            if (!statusCallback) statusCallback = (m) => log(m);
+            try {
+                statusCallback("Connecting wallet...");
+                await instance.connect(signer);
+
+                const oldState = latestConfirmedState ? { ...latestConfirmedState } : null;
+
+                // Use currentTxId directly since instance.from may not be set when using fromTx()
+                const prevTxId = currentTxId;
+                if (!prevTxId) {
+                    statusCallback("Error: No current transaction ID");
+                    return;
+                }
+
+                statusCallback(`Checking confirmation for ${prevTxId.substring(0, 8)}...`);
+                const txUrl = `https://api.whatsonchain.com/v1/bsv/main/tx/hash/${prevTxId}`;
+                let txResp;
+                try {
+                    txResp = await fetch(txUrl);
+                } catch (e) {
+                    console.log("Direct fetch failed, trying CORS proxy for tx info...");
+                    txResp = await fetch('https://corsproxy.io/?' + encodeURIComponent(txUrl));
+                }
+                const txInfo = await txResp.json();
+
+                if (!txInfo.blockhash) {
+                    statusCallback("⏳ Transaction pending (not in block yet). Please wait...");
+                    log("Previous transaction not confirmed yet. Cannot trigger new day.");
+                    return;
+                }
+
+                txInfo.blockHash = txInfo.blockhash;
+
+                statusCallback("Fetching block header...");
+                const header = await fetchBlockHeader(txInfo.blockHash);
+
+                statusCallback("Fetching Merkle Proof...");
+                const proof = await fetchMerkleProof(prevTxId, txInfo.blockHash);
+
+                statusCallback("Verifying proof & Starting new day...");
+                const pubKey = await signer.getDefaultPubKey();
+
+                try {
+                    debugLocalVerify(prevTxId, header, proof);
+                } catch (e) {
+                    console.error("Local debug verify crashed:", e);
+                }
+
+                const nextInstance = instance.next();
+                // Off-chain state update: replicate triggerState logic
+                nextInstance.triggerState(header, scrypt.toByteString(prevTxId, false));
+
+                // Call triggerNewDay method (was triggerRandomEvent in SneetexBSV)
+                const { tx } = await instance.methods.triggerNewDay(
+                    (sigResps) => scrypt.findSig(sigResps, pubKey),
+                    scrypt.PubKey(pubKey.toString()),
+                    header,
+                    proof,
+                    {
+                        pubKeyOrAddrToSign: pubKey,
+                        changeAddress: await signer.getDefaultAddress(),
+                        transfer: nextInstance
+                    }
+                );
+
+                statusCallback(`Success! New Day Started. TX: ${tx.id.substring(0, 8)}`);
+                log(`New Day Triggered! TXID: ${tx.id}`);
+                currentTxId = tx.id;
+                document.getElementById('contractId').textContent = currentTxId;
+                saveToHistory(currentTxId, currentDeploymentId);
+                await updateGameState();
+
+                if (latestConfirmedState) {
+                    showNewDayPanel(oldState, latestConfirmedState, tx.id);
+                }
+
+            } catch (e) {
+                statusCallback(`Failed: ${e.message}`);
+                log(`New Day Failed: ${e.message}`);
+                console.error(e);
+            }
+        }
+
+
+
+        function debugLocalVerify(txId, header, proof) {
+            console.log("--- DEBUG LOCAL VERIFY ---");
+            console.log("TxId (BE):", txId);
+            console.log("Header Root (LE):", header.merkleRoot);
+
+            // MerklePath constants (from scrypt-ts-lib):
+            const INVALID_NODE = 0n;
+            const LEFT_NODE = 1n;  // sibling is on Left
+            const RIGHT_NODE = 2n; // sibling is on Right
+
+            let currentHash = reverseHex(txId); // LE
+            // proof elements are already LE hex strings (as ByteString)
+
+            for (let i = 0; i < 32; i++) {
+                const node = proof[i];
+                if (node.pos === INVALID_NODE) continue; // Skip invalid nodes
+
+                const sibling = node.hash; // LE
+
+                let combined;
+                if (node.pos === RIGHT_NODE) { // Sibling is Right. I am Left.
+                    combined = currentHash + sibling;
+                } else if (node.pos === LEFT_NODE) { // Sibling is Left. I am Right.
+                    combined = sibling + currentHash;
+                } else {
+                    continue; // Unknown pos, skip
+                }
+
+                // Hash is Double SHA256
+                const bsv = scrypt.bsv;
+                const buf = bsv.deps.Buffer.from(combined, 'hex');
+                const h1 = bsv.crypto.Hash.sha256(buf);
+                const h2 = bsv.crypto.Hash.sha256(h1);
+                currentHash = h2.toString('hex');
+            }
+
+            console.log("Calc Root (LE):", currentHash);
+            console.log("MATCH?:", currentHash === header.merkleRoot);
+        }
+
+        function reverseHex(hex) {
+            return hex.match(/.{1,2}/g).reverse().join('');
+        }
+
+        async function fetchMerkleProof(txId, blockHash) {
+            // Use TSC format endpoint: /tx/:txid/proof/tsc
+            const url = `https://api.whatsonchain.com/v1/bsv/main/tx/${txId}/proof/tsc`;
+            let resp;
+            try {
+                resp = await fetch(url);
+            } catch (e) {
+                // CORS error - try with proxy
+                console.log("Direct fetch failed, trying CORS proxy for Merkle proof...");
+                resp = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
+            }
+            const dataArr = await resp.json();
+
+            if (!dataArr || dataArr.length === 0) throw new Error("No merkle proof found for tx");
+
+            // TSC format: { index: number, target: string (blockhash), nodes: string[] }
+            // Nodes are the sibling hashes needed for the proof.
+            // Note: TSC format nodes usually don't have 'pos'.
+            // The position (L/R) is derived from the index bit at each depth.
+            // If bit is 0 -> Node is Right (because we are Left) -> NO?
+            // Standard Merkle: 
+            // If index & 1 == 0 (even), we are Left, sibling is Right.
+            // If index & 1 == 1 (odd), we are Right, sibling is Left.
+            // scrypt-ts MerklePath:
+            // LEFT_NODE (0) means Sibling is on Left. 
+            // RIGHT_NODE (1) means Sibling is on Right.
+            // Wait, let's verify standard definitions.
+            // If I am at index 0 (even), I need neighbor at 1. My neighbor is Right.
+            // So if (index & 1) === 0, Sibling is Right.
+            // If (index & 1) === 1, Sibling is Left.
+
+            const proofData = dataArr[0];
+            const nodes = proofData.nodes;
+            let index = proofData.index;
+
+            // CRITICAL: scrypt-ts-lib MerklePath constants (from merklePath.js):
+            // INVALID_NODE = 0n (node should be skipped)
+            // LEFT_NODE = 1n (sibling is on the Left)
+            // RIGHT_NODE = 2n (sibling is on the Right)
+            const INVALID_NODE = 0n;
+            const LEFT_NODE = 1n;
+            const RIGHT_NODE = 2n;
+
+            const path = [];
+
+            for (const nodeHash of nodes) {
+                // Position calculation based on TSC index:
+                // If (index & 1) === 0 (We are Left child), Sibling is Right -> pos = RIGHT_NODE (2)
+                // If (index & 1) === 1 (We are Right child), Sibling is Left -> pos = LEFT_NODE (1)
+                const pos = (index & 1) === 0 ? RIGHT_NODE : LEFT_NODE;
+
+                // WOC returns hashes in Big Endian, contract needs Little Endian
+                path.push({
+                    hash: scrypt.Sha256(scrypt.toByteString(reverseHex(nodeHash), false)),
+                    pos: pos
+                });
+
+                index = Math.floor(index / 2);
+            }
+
+            // Fill rest with dummy nodes to reach length 32
+            while (path.length < 32) {
+                path.push({
+                    hash: scrypt.Sha256(scrypt.toByteString('00'.repeat(32), false)),
+                    pos: INVALID_NODE
+                });
+            }
+
+            return path;
+        }
+
+        async function fetchBlockHeader(blockHash) {
+            const url = `https://api.whatsonchain.com/v1/bsv/main/block/${blockHash}`;
+            let resp;
+            try {
+                resp = await fetch(url);
+            } catch (e) {
+                // CORS error - try with proxy
+                console.log("Direct fetch failed, trying CORS proxy for block header...");
+                resp = await fetch('https://corsproxy.io/?' + encodeURIComponent(url));
+            }
+            const block = await resp.json();
+
+            // Match SneetexBSV requirements (ByteStrings for version/time/nonce/bits)
+            // IMPORTANT: prevBlockHash should NOT be reversed (WOC returns it in the correct format)
+            // merkleRoot MUST be reversed (WOC returns BE, contract needs LE)
+
+            return {
+                version: scrypt.int2ByteString(BigInt(block.version), 4n),
+                prevBlockHash: scrypt.Sha256(scrypt.toByteString(block.previousblockhash, false)), // NO reverseHex!
+                merkleRoot: scrypt.Sha256(scrypt.toByteString(reverseHex(block.merkleroot), false)), // Keep reverseHex
+                time: BigInt(block.time),
+                bits: scrypt.toByteString(block.bits, false),
+                nonce: BigInt(block.nonce)
+            };
+        }
+
+
+    </script>
+
+</body>
+
+</html>
