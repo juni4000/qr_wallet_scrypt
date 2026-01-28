@@ -3337,60 +3337,66 @@
                 let uniqueGames = 0;
                 const seenSeeds = new Set();
 
-                // Extract IDs from recent history
-                const txIdsToFetch = recent.map(item => item.tx_hash);
+                // Separate unconfirmed (height <= 0) from confirmed - bulk API doesn't return unconfirmed
+                const unconfirmedTxs = recent.filter(item => item.height <= 0);
+                const confirmedTxs = recent.filter(item => item.height > 0);
+
+                log(`Checking ${unconfirmedTxs.length} unconfirmed + ${confirmedTxs.length} confirmed txs...`);
+
+                // Helper to process a single tx result
+                const processTxResult = (txId, txHex) => {
+                    try {
+                        const bsvTx = new scrypt.bsv.Transaction(txHex);
+                        const instance = GameContract.fromTx(bsvTx, 0);
+
+                        let seed = "unknown";
+                        try {
+                            seed = instance.FACTORY_ADDRESS;
+                        } catch (e) {
+                            console.warn("Could not read FACTORY_ADDRESS", e);
+                        }
+
+                        if (!seenSeeds.has(seed)) {
+                            seenSeeds.add(seed);
+                            uniqueGames++;
+                            log(`Found Game HEAD (ID ${seed}...): ${txId}`);
+                            saveToHistory(txId, seed);
+                        }
+                        foundCount++;
+                    } catch (parseErr) {
+                        if (parseErr.message && (parseErr.message.includes('mismatch') || parseErr.message.includes('check failed'))) {
+                            // log(`[Scan Debug] TX ${txId.substring(0,8)}... skipped: ${parseErr.message}`);
+                        }
+                    }
+                };
+
+                // Fetch unconfirmed txs individually (bulk API doesn't return them)
+                for (const item of unconfirmedTxs) {
+                    try {
+                        const resp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/tx/${item.tx_hash}/hex`);
+                        if (resp.ok) {
+                            const txHex = await resp.text();
+                            processTxResult(item.tx_hash, txHex);
+                        }
+                    } catch (e) {
+                        console.warn(`Failed to fetch unconfirmed tx ${item.tx_hash}:`, e);
+                    }
+                    await new Promise(r => setTimeout(r, 100)); // Rate limit
+                }
+
+                // Process confirmed in batches
+                const txIdsToFetch = confirmedTxs.map(item => item.tx_hash);
                 const BATCH_SIZE = 20; // WOC Limit
 
-                // Process in batches
                 for (let i = 0; i < txIdsToFetch.length; i += BATCH_SIZE) {
                     const batchIds = txIdsToFetch.slice(i, i + BATCH_SIZE);
-                    // log(`Checking batch ${Math.floor(i/BATCH_SIZE) + 1}...`);
 
                     try {
                         const bulkResults = await fetchBulkTxHex(batchIds);
 
                         for (const res of bulkResults) {
                             if (!res || !res.hex || res.error) continue;
-
-                            const txId = res.txid;
-                            const txHex = res.hex;
-                            try {
-                                const bsvTx = new scrypt.bsv.Transaction(txHex);
-                                // Check Output 0
-                                const instance = GameContract.fromTx(bsvTx, 0);
-
-                                // Parse successful - it's a game tx
-                                let seed = "unknown";
-                                try {
-                                    // Identify Game Session by FACTORY_ADDRESS (Timestamp ID)
-                                    // defined as @prop() so it is immutable and unique per deployment
-                                    seed = instance.FACTORY_ADDRESS;
-                                } catch (e) {
-                                    console.warn("Could not read FACTORY_ADDRESS", e);
-                                }
-
-                                if (!seenSeeds.has(seed)) {
-                                    // New Game identified (Latest state for this seed because we scan newest first)
-                                    seenSeeds.add(seed);
-                                    uniqueGames++;
-
-                                    log(`Found Game HEAD (ID ${seed}...): ${txId}`);
-                                    // Use seed as deploymentId to group unique sessions
-                                    saveToHistory(txId, seed);
-                                } else {
-                                    // We already have a newer state for this game
-                                    // log(`Found history state for Game ${seed.substring(0,6)}... (${txId})`);
-                                }
-
-                                foundCount++;
-
-                            } catch (parseErr) {
-                                // DEBUG: Log why it failed to help diagnose "Found 0 games"
-                                // If it mentions mistmatch, it's critical info
-                                if (parseErr.message && (parseErr.message.includes('mismatch') || parseErr.message.includes('check failed'))) {
-                                    // log(`[Scan Debug] TX ${txId.substring(0,8)}... skipped: ${parseErr.message}`);
-                                }
-                            }
+                            processTxResult(res.txid, res.hex);
                         }
                     } catch (batchErr) {
                         console.error("Batch error:", batchErr);
