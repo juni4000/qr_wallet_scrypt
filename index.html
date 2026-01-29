@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scrypt Contract Test</title>
     <!-- Load the bundled scrypt code -->
-    <script src="scrypt_bundle.js?v=1769621826"></script>
-    <script src="artifact.js?v=1769621826"></script>
+    <script src="scrypt_bundle.js?v=202601292340"></script>
+    <script src="artifact.js?v=202601292340"></script>
     <style>
         :root {
             --bg-primary: #eef2f5;
@@ -1315,10 +1315,23 @@
                 const shortId = item.txId.substring(0, 8) + '...';
                 const isCurrent = currentTxId === item.txId;
 
+                // Determine label based on deploymentId (Genesis ID)
+                let label = `<span style="font-weight:bold; color: #888;">GAME</span>`;
+                let subLabel = '';
+
+                if (item.deploymentId && item.deploymentId.length > 20) {
+                    // It's likely a Genesis ID
+                    label = `<span style="font-weight:bold; color: #3b82f6;">GENESIS</span>`;
+                    if (item.deploymentId !== item.txId) {
+                        subLabel = `<br/><span style="font-size:0.7em; color:#94a3b8;">${item.deploymentId.substring(0, 8)}...</span>`;
+                    }
+                }
+
                 li.innerHTML = `
-                    <div>
-                        <span style="font-weight:bold; color: #888;">GAME</span>
+                    <div style="line-height:1.2;">
+                        ${label}
                         <span title="${date}" style="${isCurrent ? 'color:green; font-weight:bold;' : ''}">${shortId}</span> 
+                        ${subLabel}
                     </div>
                     <div>
                         <button onclick="loadContract('${item.txId}', '${item.deploymentId}')" style="padding: 2px 5px; font-size: 0.8em; cursor:pointer;">${isCurrent ? 'Active' : 'Load'}</button>
@@ -1528,8 +1541,10 @@
                         // Check if owned
                         if ((predictedFlags & cloth.flag.bit) !== 0n) {
                             // Add button to wear this specific cloth
+                            // FIX: Use generic CHANGE_CLOTHES item (34) passed as actionType=1
+                            // and allow processAction to read the target clothes from 'amount'
                             actionsHtml += `
-                            <button onclick="addActionToQueue(${cloth.id}, 1n, 0n, 'Wear ${cloth.name}')" 
+                            <button onclick="addActionToQueue(34, 1n, ${cloth.id}n, 'Wear ${cloth.name}')" 
                                     class="action-btn"
                                     style="background: #795548; padding: 10px 14px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; border: none; cursor: pointer; min-width: 80px;">
                                 <span style="display: flex; align-items: center; gap: 5px;">${cloth.emoji} Wear</span>
@@ -1714,9 +1729,7 @@
                     // But scrypt-ts `DefaultProvider` (TaalProvider) uses specific paths.
                     // Let's monkey patch sendRawTransaction to be sure.
                     provider.sendRawTransaction = async function (rawTxHex) {
-                        console.log("Broadcasting via ARC endpoint...");
-                        console.log("[DEBUG] Raw TX hex length:", rawTxHex?.length);
-                        const directUrl = 'https://arc.taal.com/v1/tx';
+                        console.log("Broadcasting transaction...");
                         const apiKeyInput = document.getElementById('customApiKey');
                         let apiKey = apiKeyInput.value;
 
@@ -1726,48 +1739,63 @@
                             apiKeyInput.value = apiKey; // Populate UI
                         }
 
+                        // Try WoC broadcast first (simpler, works from HTTPS)
+                        try {
+                            console.log("Trying WoC broadcast...");
+                            const wocRes = await fetch('https://api.whatsonchain.com/v1/bsv/main/tx/raw', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ txhex: rawTxHex })
+                            });
+                            if (wocRes.ok) {
+                                const txid = await wocRes.text();
+                                console.log("WoC broadcast success:", txid);
+                                return txid.replace(/"/g, ''); // Remove quotes if present
+                            }
+                            const wocErr = await wocRes.text();
+                            console.warn("WoC broadcast failed:", wocErr);
+                        } catch (e) {
+                            console.warn("WoC broadcast error:", e.message);
+                        }
+
+                        // Fallback to ARC via allorigins proxy (corsproxy has issues)
+                        console.log("Trying ARC via allorigins proxy (raw mode)...");
+                        const arcUrl = 'https://arc.taal.com/v1/tx';
+                        const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(arcUrl);
+
                         const headers = {
                             'Content-Type': 'application/octet-stream'
                         };
                         if (apiKey) {
                             headers['Authorization'] = `Bearer ${apiKey}`;
-                        } else {
-                            console.warn("No API Key provided for ARC broadcast!");
                         }
 
                         const body = this.isEmpty(rawTxHex) ? null : this.hexToUint8Array(rawTxHex);
-                        const isHttps = window.location.protocol === 'https:';
 
-                        // Try direct first if on HTTPS, fallback to proxy
-                        const tryBroadcast = async (url) => {
-                            const res = await fetch(url, {
+                        try {
+                            const res = await fetch(proxyUrl, {
                                 method: 'POST',
                                 headers: headers,
                                 body: body
                             });
-                            if (!res.ok) {
-                                const text = await res.text();
-                                throw new Error(`ARC Broadcast failed: ${text}`);
-                            }
-                            return await res.json();
-                        };
 
-                        try {
-                            // Try direct first (works on HTTPS, may fail on file://)
-                            if (isHttps) {
-                                console.log("Trying direct ARC broadcast...");
-                                const json = await tryBroadcast(directUrl);
+                            if (res.ok) {
+                                const json = await res.json();
                                 return json.txid;
                             }
-                        } catch (e) {
-                            console.warn("Direct broadcast failed:", e.message);
+                            const text = await res.text();
+                            throw new Error(`Broadcast failed: ${text}`);
+                        } catch (err) {
+                            // If we get a CORS error but it was a 200 (often seen in logs), 
+                            // we might assume success or try to verify via WoC.
+                            console.warn("ARC broadcast may have been blocked by CORS, but check logs. Verifying via WoC...");
+                            // Wait a bit and see if WoC sees it
+                            await new Promise(r => setTimeout(r, 2000));
+                            const txid = scrypt.bsv.Transaction(rawTxHex).id;
+                            const verify = await fetch(`https://api.whatsonchain.com/v1/bsv/main/tx/${txid}/hex`).catch(() => ({ ok: false }));
+                            if (verify.ok) return txid;
+                            throw err;
                         }
-
-                        // Fallback to proxy
-                        console.log("Using CORS proxy for ARC broadcast...");
-                        const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(directUrl);
-                        const json = await tryBroadcast(proxyUrl);
-                        return json.txid;
                     };
 
                     // Helpers for the patch
@@ -2995,18 +3023,34 @@
                     console.error('[DEBUG] Local:', itemsRoot);
                 }
 
+                if ((!instance.genesisTxId || instance.genesisTxId === '') && currentTxId) {
+                    console.log('[DEBUG] First action detected. Syncing nextInstance.genesisTxId with currentTxId:', currentTxId);
+                    // Contract stores genesisTxId as outpoint.txid (Little Endian).
+                    // currentTxId is Big Endian (Display). We must reverse it.
+                    nextInstance.genesisTxId = scrypt.reverseByteString(currentTxId, 32n);
+                }
+
+                console.log('[DEBUG] === Prop Comparison ===');
+                ['playerPubKeyHash', 'itemsRoot', 'FACTORY_ADDRESS', 'contractPrice', 'lastRandomSeed', 'isRandomEventDue'].forEach(p => {
+                    console.log(`[PROP] ${p}: instance=${instance[p]}, next=${nextInstance[p]}`);
+                });
+
                 for (const action of actionQueue) {
                     const itemIndex = Number(action.id);
                     const item = ITEMS_DB[itemIndex];
                     console.log(`[DEBUG] Applying action: type=${action.type}, id=${action.id}, amount=${action.amount}, itemName=${item?.name}`);
-                    nextInstance.performActionState(action.type, action.id, action.amount, item);
+                    nextInstance.performActionState(BigInt(action.type), BigInt(action.id), BigInt(action.amount), item);
                     console.log(`[DEBUG] After action - packedGameState: ${nextInstance.packedGameState}`);
                 }
 
-                console.log('[DEBUG] === Post-simulation state ===');
+                console.log('[DEBUG] === Predicted State vs Source Instance ===');
                 console.log('[DEBUG] nextInstance.packedGameState:', nextInstance.packedGameState);
-                console.log('[DEBUG] nextInstance.isRandomEventDue:', nextInstance.isRandomEventDue);
-                console.log('[DEBUG] nextInstance.lastRandomSeed:', nextInstance.lastRandomSeed);
+                console.log('[DEBUG] nextInstance.genesisTxId:', nextInstance.genesisTxId);
+                console.log('[DEBUG] instance.genesisTxId (source):', instance.genesisTxId);
+
+                const nextStateScript = nextInstance.getStateScript();
+                console.log('[DEBUG] nextInstance getStateScript() length:', nextStateScript.length / 2);
+                console.log('[DEBUG] nextInstance lockingScript length:', nextInstance.lockingScript.toHex().length / 2);
 
                 log(`Committing ${actionQueue.length} actions...`);
                 console.log('[DEBUG] Action Queue:', JSON.stringify(actionQueue));
@@ -3291,6 +3335,13 @@
             }
         }
 
+        // Helper to reverse hex string (for endianness flip)
+        const reverseHex = (hex) => {
+            if (!hex) return "";
+            if (hex.length % 2 !== 0) return hex;
+            return hex.match(/../g).reverse().join('');
+        };
+
         async function scanForContracts() {
             if (!signer) return alert("Connect wallet first!");
             const btn = document.getElementById('btnScan');
@@ -3301,105 +3352,136 @@
 
             try {
                 const address = await signer.getDefaultAddress();
-                log(`Scanning history for: ${address}`);
+                log(`Ultra Scan initiated for: ${address}`);
 
-                // Fetch transaction history (Whatsonchain API)
-                const resp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${address}/history`);
-                const history = await resp.json();
+                // 1. Fetch ALL UTXOs (Fast way to find LIVE state)
+                const utxoResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${address}/unspent`);
+                const utxos = await utxoResp.json();
+                const liveOutpoints = new Set(utxos.map(u => `${u.tx_hash}:${u.tx_pos}`));
 
-                // Sort logic: 
-                // Unconfirmed (height <= 0) should be conceptually "infinite" height (newest)
-                // Confirmed sorted by height descending.
-                history.sort((a, b) => {
-                    const hA = a.height <= 0 ? Number.MAX_SAFE_INTEGER : a.height;
-                    const hB = b.height <= 0 ? Number.MAX_SAFE_INTEGER : b.height;
-                    return hB - hA;
-                });
+                // Map txid to height for sorting
+                const txHeights = {};
+                utxos.forEach(u => { txHeights[u.tx_hash] = u.height; });
 
-                // Increase scan depth to 50 to catch games even if there's other activity
-                const limit = 50;
-                const recent = history.slice(0, limit);
+                log(`Found ${utxos.length} UTXOs. Checking for live contracts...`);
 
-                log(`Found ${history.length} txs. Scanning top ${recent.length}...`);
+                const candidates = {}; // map: groupKey -> array of {instance, txId, outIdx, isLive, height}
 
-                let foundCount = 0;
-                let uniqueGames = 0;
-                const seenSeeds = new Set();
-
-                // Separate unconfirmed (height <= 0) from confirmed - bulk API doesn't return unconfirmed
-                const unconfirmedTxs = recent.filter(item => item.height <= 0);
-                const confirmedTxs = recent.filter(item => item.height > 0);
-
-                log(`Checking ${unconfirmedTxs.length} unconfirmed + ${confirmedTxs.length} confirmed txs...`);
-
-                // Helper to process a single tx result
-                const processTxResult = (txId, txHex) => {
+                // Shared Processor
+                const processTxResult = (txId, txHex, height = 0) => {
                     try {
                         const bsvTx = new scrypt.bsv.Transaction(txHex);
-                        const instance = GameContract.fromTx(bsvTx, 0);
+                        for (let outIdx = 0; outIdx < bsvTx.outputs.length; outIdx++) {
+                            const outpoint = `${txId}:${outIdx}`;
 
-                        let seed = "unknown";
-                        try {
-                            seed = instance.FACTORY_ADDRESS;
-                        } catch (e) {
-                            console.warn("Could not read FACTORY_ADDRESS", e);
-                        }
+                            try {
+                                const instance = GameContract.fromTx(bsvTx, outIdx);
+                                if (!instance) continue;
 
-                        if (!seenSeeds.has(seed)) {
-                            seenSeeds.add(seed);
-                            uniqueGames++;
-                            log(`Found Game HEAD (ID ${seed}...): ${txId}`);
-                            saveToHistory(txId, seed);
+                                let groupKey = "Legacy_Unknown";
+                                let isGenesis = false;
+
+                                if (instance.genesisTxId && instance.genesisTxId.length > 0) {
+                                    // Reverse LE to BE for standard display/grouping
+                                    groupKey = reverseHex(instance.genesisTxId);
+                                    isGenesis = true;
+                                } else if (instance.gl_genesisTxId) {
+                                    groupKey = reverseHex(instance.gl_genesisTxId);
+                                    isGenesis = true;
+                                } else {
+                                    // Fallback
+                                    const seed = instance.FACTORY_ADDRESS || "unknown";
+                                    groupKey = seed + "_Legacy";
+                                }
+
+                                const isLive = liveOutpoints.has(outpoint);
+
+                                if (!candidates[groupKey]) candidates[groupKey] = [];
+                                candidates[groupKey].push({
+                                    txId,
+                                    outIdx,
+                                    isLive,
+                                    height,
+                                    isGenesis,
+                                    instance
+                                });
+
+                            } catch (e) { } // Not a contract
                         }
-                        foundCount++;
-                    } catch (parseErr) {
-                        if (parseErr.message && (parseErr.message.includes('mismatch') || parseErr.message.includes('check failed'))) {
-                            // log(`[Scan Debug] TX ${txId.substring(0,8)}... skipped: ${parseErr.message}`);
-                        }
-                    }
+                    } catch (e) { console.warn(e); }
                 };
 
-                // Fetch unconfirmed txs individually (bulk API doesn't return them)
-                for (const item of unconfirmedTxs) {
-                    try {
-                        const resp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/tx/${item.tx_hash}/hex`);
-                        if (resp.ok) {
-                            const txHex = await resp.text();
-                            processTxResult(item.tx_hash, txHex);
-                        }
-                    } catch (e) {
-                        console.warn(`Failed to fetch unconfirmed tx ${item.tx_hash}:`, e);
+                // 2. Process UTXOs first
+                const utxoTxIds = [...new Set(utxos.map(u => u.tx_hash))];
+                for (let i = 0; i < utxoTxIds.length; i += 20) {
+                    const batch = utxoTxIds.slice(i, i + 20);
+                    const results = await fetchBulkTxHex(batch);
+                    for (const res of results) {
+                        if (res && res.hex) processTxResult(res.txid, res.hex, txHeights[res.txid] || 0);
                     }
-                    await new Promise(r => setTimeout(r, 100)); // Rate limit
                 }
 
-                // Process confirmed in batches
-                const txIdsToFetch = confirmedTxs.map(item => item.tx_hash);
-                const BATCH_SIZE = 20; // WOC Limit
+                // 3. Scan History for fallback/completeness (Deep scan)
+                log(`Deep scanning history for context...`);
+                const histResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${address}/history`);
+                const history = await histResp.json();
 
-                for (let i = 0; i < txIdsToFetch.length; i += BATCH_SIZE) {
-                    const batchIds = txIdsToFetch.slice(i, i + BATCH_SIZE);
+                // Add history heights
+                history.forEach(h => { txHeights[h.tx_hash] = h.height; });
 
-                    try {
-                        const bulkResults = await fetchBulkTxHex(batchIds);
+                const limit = 200;
+                const recent = history.slice(0, limit);
+                const histTxIds = [...new Set(recent.map(h => h.tx_hash))].filter(txid => !utxoTxIds.includes(txid)); // Avoid dupes
 
-                        for (const res of bulkResults) {
-                            if (!res || !res.hex || res.error) continue;
-                            processTxResult(res.txid, res.hex);
-                        }
-                    } catch (batchErr) {
-                        console.error("Batch error:", batchErr);
-                        log("Batch fetch failed, skipping...");
+                log(`Scanning ${histTxIds.length} recent history txs...`);
+
+                for (let i = 0; i < histTxIds.length; i += 20) {
+                    const batch = histTxIds.slice(i, i + 20);
+                    const results = await fetchBulkTxHex(batch);
+                    for (const res of results) {
+                        if (res && res.hex) processTxResult(res.txid, res.hex, txHeights[res.txid] || 0);
                     }
-
-                    // Polite delay between batches
-                    if (i + BATCH_SIZE < txIdsToFetch.length) await new Promise(r => setTimeout(r, 200));
                 }
 
-                log(`Scan complete. Found ${foundCount} total txs, representing ${uniqueGames} unique games.`);
+                // 4. Process Candidates and Save Best
+                const groups = Object.keys(candidates);
+                log(`Analysis Complete. Found ${groups.length} unique game instances.`);
+
+                groups.forEach(groupKey => {
+                    const group = candidates[groupKey];
+
+                    // Sort: 
+                    // 1. Live > Spent (optional, but head should be live mostly)
+                    // 2. Unconfirmed (height <= 0) > Confirmed
+                    // 3. Higher Height > Lower Height
+
+                    group.sort((a, b) => {
+                        // Check status first?
+
+                        // Height logic: Unconfirmed (<=0) is "Infinity" effectively for newness
+                        const hA = (a.height <= 0) ? Infinity : a.height;
+                        const hB = (b.height <= 0) ? Infinity : b.height;
+
+                        if (hA !== hB) return hB - hA; // Descending
+
+                        // If same height (e.g. both unconfirmed or both in same block), prefer Live
+                        return a.isLive ? -1 : 1;
+                    });
+
+                    const best = group[0];
+                    const label = best.isGenesis ? `Genesis: ${groupKey.substring(0, 8)}...` : `Legacy Game`;
+
+                    const statusStr = (best.height <= 0) ? "UNCONFIRMED" : (best.isLive ? "LIVE" : "HISTORY");
+                    log(`[${statusStr}] Saving ${label} -> Head: ${best.txId.substring(0, 8)}...`);
+
+                    // Save to history with Group Key (Deployment ID)
+                    saveToHistory(best.txId, groupKey);
+                });
+
+                log("History updated via Ultra Scan.");
 
             } catch (e) {
-                log(`Scan Error: ${e.message}`);
+                log(`Scan Error: ${e.message}`, "error");
                 console.error(e);
             } finally {
                 if (btn) {
@@ -3595,9 +3677,9 @@
             console.log("MATCH?:", currentHash === header.merkleRoot);
         }
 
-        function reverseHex(hex) {
-            return hex.match(/.{1,2}/g).reverse().join('');
-        }
+        // function reverseHex(hex) {
+        //     return hex.match(/.{1,2}/g).reverse().join('');
+        // }
 
         async function fetchMerkleProof(txId, blockHash) {
             // Use TSC format endpoint: /tx/:txid/proof/tsc

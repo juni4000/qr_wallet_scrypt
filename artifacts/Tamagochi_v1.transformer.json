@@ -1,0 +1,12 @@
+{
+  "success": true,
+  "errors": [],
+  "scryptfile": "Tamagochi_v1.scrypt",
+  "sourceMapFile": "Tamagochi_v1.scrypt.map",
+  "ctxMethods": [
+    "buyContract",
+    "setContractPrice",
+    "performActionPacked",
+    "triggerNewDay"
+  ]
+}

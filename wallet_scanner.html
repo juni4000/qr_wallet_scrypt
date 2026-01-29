@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>sCrypt Wallet Scanner</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --accent: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --text: #f8fafc;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .input-group {
+            background: var(--card);
+            padding: 20px 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .row {
+            display: flex;
+            gap: 15px;
+            width: 100%;
+            align-items: center;
+        }
+
+        .artifact-status {
+            font-size: 12px;
+            padding: 5px 12px;
+            border-radius: 4px;
+            background: #334155;
+            color: #94a3b8;
+        }
+
+        .artifact-status.loaded {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .btn-secondary {
+            background: #475569;
+        }
+
+        input {
+            flex: 1;
+            background: #0f172a;
+            border: 1px solid #334155;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+        }
+
+        button {
+            background: var(--accent);
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            filter: brightness(1.2);
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: var(--card);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: var(--accent);
+        }
+
+        #log {
+            background: #000;
+            color: #ccc;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 13px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 30px;
+            border: 1px solid #334155;
+        }
+
+        #log div.success {
+            color: var(--success);
+        }
+
+        #log div.warning {
+            color: var(--warning);
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+
+        .contract-card {
+            background: var(--card);
+            padding: 25px;
+            border-radius: 16px;
+            border-left: 5px solid #334155;
+            position: relative;
+            transition: transform 0.2s;
+        }
+
+        .contract-card.live {
+            border-left-color: var(--success);
+        }
+
+        .contract-card:hover {
+            transform: scale(1.01);
+        }
+
+        .badge {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .badge.live {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+        }
+
+        .badge.spent {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--error);
+        }
+
+        .field {
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .label {
+            color: #94a3b8;
+            font-weight: 500;
+            margin-right: 8px;
+        }
+
+        .value {
+            color: #f8fafc;
+            word-break: break-all;
+        }
+
+        .tx-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-family: monospace;
+        }
+
+        .tx-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Ultra Wallet Scanner</h1>
+            <p>Scanning UTXOs and History for Tamagochi Contracts</p>
+        </div>
+
+        <div class="input-group">
+            <div class="row">
+                <button class="btn-secondary" onclick="document.getElementById('fileInput').click()">📁 Load
+                    Tamagochi_v1.json</button>
+                <input type="file" id="fileInput" accept=".json" onchange="handleFileSelect(event)">
+                <span id="artifactLabel" class="artifact-status">Artifact not loaded</span>
+                <div style="flex: 1"></div>
+                <label style="font-size: 12px; color: #94a3b8;">Required for offline use (CORS)</label>
+            </div>
+            <div class="row">
+                <input type="text" id="address" placeholder="Enter BSV Address..."
+                    value="1FAKiEhReUbVha5Fac94ao47u2kq4mmpnA">
+                <input type="number" id="depth" placeholder="Depth" value="300" style="max-width: 100px;">
+                <button id="btnScan" onclick="startScan()" disabled>Start scan</button>
+            </div>
+        </div>
+
+        <div class="stats" id="stats" style="display: none;">
+            <div class="stat-card">
+                <div>UTXOs Checked</div>
+                <div class="stat-value" id="stat-utxos">0</div>
+            </div>
+            <div class="stat-card">
+                <div>History Searched</div>
+                <div class="stat-value" id="stat-history">0</div>
+            </div>
+            <div class="stat-card">
+                <div>Contracts Found</div>
+                <div class="stat-value" id="stat-found">0</div>
+            </div>
+            <div class="stat-card">
+                <div>Live Heads</div>
+                <div class="stat-value" id="stat-live" style="color: var(--success)">0</div>
+            </div>
+        </div>
+
+        <div id="log">Waiting for input...</div>
+
+        <div class="results-grid" id="results"></div>
+    </div>
+
+    <script src="scrypt_bundle.js"></script>
+    <script>
+        const logBox = document.getElementById('log');
+        const resultsBox = document.getElementById('results');
+
+        function log(msg, cls = '') {
+            const div = document.createElement('div');
+            div.textContent = `> ${msg}`;
+            if (cls) div.className = cls;
+            logBox.appendChild(div);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        async function fetchBulkHex(txids) {
+            if (txids.length === 0) return [];
+            log(`Fetching hex for ${txids.length} txs...`);
+            const url = 'https://api.whatsonchain.com/v1/bsv/main/txs/hex';
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ txids })
+            });
+            return await resp.json();
+        }
+
+        let loadedArtifact = null;
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    loadedArtifact = JSON.parse(e.target.result);
+                    document.getElementById('artifactLabel').innerText = "Artifact: " + file.name;
+                    document.getElementById('artifactLabel').classList.add('loaded');
+                    document.getElementById('btnScan').disabled = false;
+                    log(`Artifact ${file.name} loaded from local file.`, "success");
+                } catch (err) {
+                    alert("Invalid JSON file");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        const reverseHex = (hex) => {
+            if (!hex) return "";
+            return hex.match(/../g).reverse().join('');
+        };
+
+        async function startScan() {
+            const addr = document.getElementById('address').value.trim();
+            const depth = parseInt(document.getElementById('depth').value) || 200;
+            const btn = document.getElementById('btnScan');
+
+            if (!addr) return alert("Enter address");
+
+            btn.disabled = true;
+            resultsBox.innerHTML = '';
+            logBox.innerHTML = '';
+            document.getElementById('stats').style.display = 'grid';
+
+            try {
+                const bundle = window.ScryptBundle || {};
+                const GameContract = window.GameContract || bundle.GameContract;
+                const scrypt = window.scrypt || bundle.scrypt;
+
+                // 1. Try to load loadedArtifact if available, else attempt fetch (for web servers)
+                if (!loadedArtifact) {
+                    log("Attempting to auto-fetch artifact...");
+                    try {
+                        const artResp = await fetch('Tamagochi_v1.json');
+                        loadedArtifact = await artResp.json();
+                    } catch (e) {
+                        throw new Error("Could not find Tamagochi_v1.json. Please use the 'Load' button to select it manually.");
+                    }
+                }
+
+                GameContract.loadArtifact(loadedArtifact);
+                log("Contract initialization complete.", "success");
+
+                // 2. Fetch UTXOs
+                log(`Fetching UTXOs for ${addr}...`);
+                const utxoResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${addr}/unspent`);
+                const utxos = await utxoResp.json();
+                document.getElementById('stat-utxos').innerText = utxos.length;
+                const liveOutpoints = new Set(utxos.map(u => `${u.tx_hash}:${u.tx_pos}`));
+
+                // Map txid to height for sorting/status
+                const txHeights = {};
+                utxos.forEach(u => { txHeights[u.tx_hash] = u.height; });
+
+                // 3. Fetch History
+                log(`Fetching history (depth ${depth})...`);
+                const histResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${addr}/history`);
+                const history = await histResp.json();
+                // Sort descending by height
+                history.sort((a, b) => (b.height || Infinity) - (a.height || Infinity));
+                const recent = history.slice(0, depth);
+                document.getElementById('stat-history').innerText = recent.length;
+
+                recent.forEach(h => { txHeights[h.tx_hash] = h.height; });
+
+                // 4. Group all unique TXIDs to check (UTXO txs + History txs)
+                const allTxIds = [...new Set([
+                    ...utxos.map(u => u.tx_hash),
+                    ...recent.map(h => h.tx_hash)
+                ])];
+
+                log(`Total unique transactions to analyze: ${allTxIds.length}`);
+
+                // Map: GenesisID (Hex BE) -> Array of contracts
+                let contractsByGenesis = {};
+                let liveCount = 0;
+                let foundCount = 0;
+
+                // Process in batches
+                for (let i = 0; i < allTxIds.length; i += 20) {
+                    const batch = allTxIds.slice(i, i + 20);
+                    const hexResults = await fetchBulkHex(batch);
+
+                    for (const res of hexResults) {
+                        if (!res || !res.hex) continue;
+                        const bsvTx = new scrypt.bsv.Transaction(res.hex);
+
+                        for (let outIdx = 0; outIdx < bsvTx.outputs.length; outIdx++) {
+                            try {
+                                const instance = GameContract.fromTx(bsvTx, outIdx);
+                                if (!instance) continue;
+
+                                const op = `${res.txid}:${outIdx}`;
+                                const isLive = liveOutpoints.has(op);
+
+                                // Reverse genesisTxId from LE (contract state) to BE (display/standard)
+                                const genesisIdLE = instance.genesisTxId;
+                                const genesisId = genesisIdLE ? reverseHex(genesisIdLE) : "Legacy/Unknown";
+
+                                if (!contractsByGenesis[genesisId]) {
+                                    contractsByGenesis[genesisId] = [];
+                                }
+
+                                const height = txHeights[res.txid] || 0; // 0 usually means unconfirmed in some APIs, or check if explicitly unconfirmed
+                                const isUnconfirmed = height <= 0 || height === undefined;
+
+                                contractsByGenesis[genesisId].push({
+                                    txid: res.txid,
+                                    outIdx,
+                                    isLive,
+                                    genesisId,
+                                    state: instance.packedGameState,
+                                    height: height,
+                                    isUnconfirmed
+                                });
+
+                                if (isLive) liveCount++;
+                                foundCount++;
+                                document.getElementById('stat-found').innerText = foundCount;
+                                document.getElementById('stat-live').innerText = liveCount;
+
+                            } catch (e) { } // Not a contract
+                        }
+                    }
+                }
+
+                // Render results grouped by Genesis
+                if (foundCount === 0) {
+                    log("No contracts found in the searched depth.", "warning");
+                } else {
+                    const genesisKeys = Object.keys(contractsByGenesis);
+                    log(`Found ${genesisKeys.length} unique genesis chains.`);
+
+                    genesisKeys.forEach(genId => {
+                        const groupDiv = document.createElement('div');
+                        groupDiv.style.marginBottom = '30px';
+                        groupDiv.style.border = '1px solid #334155';
+                        groupDiv.style.borderRadius = '16px';
+                        groupDiv.style.padding = '20px';
+                        groupDiv.style.background = '#1e293b';
+
+                        // Sort the chain: Height ASC (oldest first). Unconfirmed (height 0) at the end.
+                        const chain = contractsByGenesis[genId];
+                        chain.sort((a, b) => {
+                            const ha = a.height <= 0 ? Infinity : a.height;
+                            const hb = b.height <= 0 ? Infinity : b.height;
+                            return ha - hb;
+                        });
+
+                        const header = document.createElement('h3');
+                        header.style.marginTop = '0';
+                        header.style.color = '#3b82f6';
+                        header.innerHTML = `Genesis: <span style="color:white; font-family:monospace; font-size:0.8em">${genId}</span> <span style="font-size:0.6em; color:#94a3b8">(${chain.length} txs)</span>`;
+                        groupDiv.appendChild(header);
+
+                        const list = document.createElement('div');
+                        list.className = 'results-grid';
+
+                        chain.forEach(c => {
+                            const card = document.createElement('div');
+                            // Style unconfirmed distinctively?
+                            const statusClass = c.isUnconfirmed ? 'warning' : (c.isLive ? 'live' : '');
+                            const borderColor = c.isUnconfirmed ? '#f59e0b' : (c.isLive ? '#10b981' : '#334155');
+
+                            card.className = `contract-card`;
+                            card.style.borderLeftColor = borderColor;
+
+                            let badgeHtml = '';
+                            if (c.isUnconfirmed) {
+                                badgeHtml = `<span class="badge" style="background:rgba(245, 158, 11, 0.2); color:#f59e0b">Unconfirmed</span>`;
+                            } else if (c.isLive) {
+                                badgeHtml = `<span class="badge live">Live Head</span>`;
+                            } else {
+                                badgeHtml = `<span class="badge spent">Spent</span>`;
+                            }
+
+                            card.innerHTML = `
+                                ${badgeHtml}
+                                <div class="field"><span class="label">TxID:</span><span class="value">
+                                    <a class="tx-link" href="https://whatsonchain.com/tx/${c.txid}" target="_blank">${c.txid}</a>
+                                </span></div>
+                                <div class="field"><span class="label">Index:</span><span class="value">${c.outIdx}</span> <span class="label" style="margin-left:10px">Height:</span><span class="value">${c.height > 0 ? c.height : 'Mempool'}</span></div>
+                                <div class="field"><span class="label">State:</span><span class="value">${c.state.substring(0, 64)}...</span></div>
+                            `;
+                            list.appendChild(card);
+                        });
+
+                        groupDiv.appendChild(list);
+                        resultsBox.appendChild(groupDiv);
+                    });
+
+                    log(`Rendered groups.`);
+                }
+
+            } catch (e) {
+                log(`Error: ${e.message}`, "error");
+                console.error(e);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Start deep scan";
+            }
+        }
+    </script>
+</body>
+
+</html>

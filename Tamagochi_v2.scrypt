@@ -1,0 +1,565 @@
+import "node_modules/scrypt-ord/src/contracts/ordinal.scrypt";import "../node_modules/scrypt-ts-lib/artifacts/blockchain.scrypt";import "../node_modules/scrypt-ts-lib/artifacts/merklePath.scrypt";
+
+struct GameState {
+  int money;
+  int happiness;
+  int currentLesson;
+  int education;
+  int career;
+  int hoursLeft;
+  int maxHappiness;
+  int maxLessons;
+  int foodSupply;
+  int currentClothes;
+  int flags;
+  int flags_magic;
+  int educationalCourseCnt;
+  int jobCount;
+  int currentLocation;
+  int workLocation;
+  int investedMoney;
+  int dailySalary;
+  int[4] Expirations;
+  int lifeExpirationBlock;
+}
+
+struct Item {
+  int id;
+  bytes name;
+  int actionType;
+  int priceDaySalary;
+  bytes possibleLocations;
+  bytes valuesToChange;
+}
+
+struct ItemMerkleProof {
+  int index;
+  Sha256[6] siblings;
+}
+
+library ValueChanges {
+  static const int money = 0;
+  static const int happiness = 1;
+  static const int foodSupply = 2;
+  static const int educationalCourseCnt = 3;
+  static const int exp1 = 4;
+  static const int exp2 = 5;
+  static const int exp3 = 6;
+  static const int exp4 = 7;
+  static const int flag_has_dietwise_flag = 8;
+  static const int flag_HAS_HOUSE_FLAG = 9;
+  static const int flag_HAS_CAR_FLAG = 10;
+  static const int flag_HAS_REFRIGERATOR_FLAG = 11;
+  static const int flag_HAS_SNEAKERS_FLAG = 12;
+  static const int flag_USE_MAGIC_CARD = 13;
+  static const int flag_HAS_BICYCLE_FLAG = 14;
+  static const int flag_HAS_BACKPACK_FLAG = 15;
+  static const int flag_HAS_BANK_WORKER_CLOTHES_FLAG = 16;
+  static const int flag_HAS_FACTORY_WORKER_CLOTHES_FLAG = 17;
+  static const int flag_HAS_HEADHUNTER_WORKER_CLOTHES_FLAG = 18;
+  static const int flag_HAS_INSURANCE_BROKER_CLOTHES_FLAG = 19;
+  static const int flag_HAS_HITECH_WORKER_CLOTHES_FLAG = 20;
+  static const int flag_HAS_CLOTHES_SHOP_WORKER_CLOTHES_FLAG = 21;
+  static const int flag_HAS_FOOD_WORKER_CLOTHES_FLAG = 22;
+  static const int flag_HAS_CHINATOWN_WORKER_CLOTHES_FLAG = 23;
+  static const int flag_HAS_RENT_WORKER_CLOTHES_FLAG = 24;
+}
+
+library ActionType {
+  static const int BUY_ITEM = 0;
+  static const int CHANGE_CLOTHES = 1;
+  static const int MOVE = 2;
+  static const int WORK = 3;
+  static const int REST = 4;
+  static const int STUDY = 5;
+  static const int INVEST = 6;
+  static const int WITHDRAW = 7;
+  static const int PAY_RENT = 8;
+  static const int FIND_JOB = 9;
+  static const int QUIT_JOB = 10;
+  static const int EAT = 11;
+}
+
+library ItemId {
+  static const int REFRIGERATOR = 0;
+  static const int CAR = 1;
+  static const int HOUSE = 2;
+  static const int BALANCED_MEAL = 3;
+  static const int FAST_FOOD = 4;
+  static const int BOOK = 5;
+  static const int SNEAKERS = 6;
+  static const int BACKPACK = 7;
+  static const int USB_MINER = 8;
+  static const int MUSICAL_INSTRUMENT = 9;
+  static const int BICYCLE = 10;
+  static const int EDUCATIONAL_COURSE = 11;
+  static const int MAGIC_CARD = 12;
+  static const int RENT = 13;
+  static const int TRAVEL_CARD = 14;
+  static const int NutriCore = 15;
+  static const int PROPERTY_INSURANCE = 16;
+  static const int WORK = 17;
+  static const int REST = 18;
+  static const int STUDY = 19;
+  static const int INVEST = 20;
+  static const int WITHDRAW = 21;
+  static const int SODA_WATER = 22;
+  static const int FIND_JOB = 23;
+  static const int QUIT_JOB = 24;
+  static const int BANK_WORKER_CLOTHES = 25;
+  static const int FACTORY_WORKER_CLOTHES = 26;
+  static const int HEADHUNTER_WORKER_CLOTHES = 27;
+  static const int INSURANCE_BROKER_CLOTHES = 28;
+  static const int HITECH_WORKER_CLOTHES = 29;
+  static const int CLOTHES_SHOP_WORKER_CLOTHES = 30;
+  static const int FOOD_WORKER_CLOTHES = 31;
+  static const int CHINATOWN_WORKER_CLOTHES = 32;
+  static const int RENT_WORKER_CLOTHES = 33;
+  static const int CHANGE_CLOTHES = 34;
+  static const int MOVE_ACTION = 35;
+  static const int EAT_ACTION = 36;
+}
+struct __scrypt_ts_Change {  int amount;  Ripemd160 address;}
+
+contract Tamagochi_v2 {
+  @state bool isOneSatNFT;
+  Ripemd160 FACTORY_ADDRESS;
+  @state bytes packedGameState;
+  Sha256 itemsRoot;
+  @state Ripemd160 playerPubKeyHash;
+  @state int contractPrice;
+  @state int lastRandomEventTimestamp;
+  @state int lastRandomSeed;
+  @state bool isRandomEventDue;
+  @state bytes genesisTxId;
+  bytes __scrypt_ts_ctx_hashoutputs;
+  bytes __scrypt_ts_ctx_outpoint_txid;
+  int __scrypt_ts_ctx_outpoint_outputindex;
+  __scrypt_ts_Change __scrypt_ts_change;
+  constructor(Ripemd160 playerPubKeyHash, Ripemd160 factoryAddress, int initialRandomSeed, Sha256 itemsRoot) {
+    this.isOneSatNFT = true;
+    
+    this.playerPubKeyHash = playerPubKeyHash;
+    this.lastRandomSeed = initialRandomSeed;
+    this.isRandomEventDue = false;
+    this.FACTORY_ADDRESS = factoryAddress;
+    this.itemsRoot = itemsRoot;
+    this.lastRandomEventTimestamp = 0;
+    this.contractPrice = 0;
+    this.genesisTxId = b'';
+    GameState initialState = this.getInitialState();
+    this.packedGameState = this.packState(initialState);
+  }
+  function buildStateOutputNFT() : bytes {
+    bytes stateScript = Ordinal.removeInsciption(this.getStateScript());
+    return Utils.buildOutput(stateScript, 1);
+  }
+  static function buildInscribedOutput(bytes script, bytes content, bytes contentType) : bytes {
+    bytes part1 = Ordinal.createInsciption(content, contentType);
+    bytes part2 = Ordinal.removeInsciption(script);
+    return Utils.buildOutput(part1 + part2, 1);
+  }
+  public function buyContract(Sig sig, PubKey buyerpubkey, SigHashPreimage __scrypt_ts_txPreimage, int __scrypt_ts_changeAmount, Ripemd160 __scrypt_ts_changeAddress) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'c1')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_outpoint_outputindex = unpack(SigHash.outpoint(__scrypt_ts_txPreimage)[32 :]);
+    this.__scrypt_ts_ctx_outpoint_txid = SigHash.outpoint(__scrypt_ts_txPreimage)[0:32];
+    this.__scrypt_ts_change = {__scrypt_ts_changeAmount, __scrypt_ts_changeAddress};
+    require(this.contractPrice > 0);
+    require(hash160(buyerpubkey) != this.playerPubKeyHash);
+    require(checkSig(sig, buyerpubkey));
+    int factoryFee = this.contractPrice / 100;
+    this.contractPrice = 0;
+    this.playerPubKeyHash = hash160(buyerpubkey);
+    bytes outputs = this.buildStateOutputNFT();
+    outputs += Utils.buildOutput(Utils.buildPublicKeyHashScript(this.playerPubKeyHash), this.contractPrice - factoryFee);
+    outputs += Utils.buildOutput(Utils.buildPublicKeyHashScript(this.FACTORY_ADDRESS), factoryFee);
+    bytes transferData = "sneetexTrasfer" + hash160(buyerpubkey) + num2bin(this.contractPrice, 4);
+    outputs += Utils.buildOutput(Utils.buildOpreturnScript(transferData), 0);
+    if(this.__scrypt_ts_change.amount > 0) {
+        outputs += this.buildChangeOutput();
+      }
+    require(hash256(outputs) == this.__scrypt_ts_ctx_hashoutputs);
+  }
+  public function setContractPrice(Sig playerSig, PubKey playerPubKey, int newprice, SigHashPreimage __scrypt_ts_txPreimage, int __scrypt_ts_changeAmount, Ripemd160 __scrypt_ts_changeAddress) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'41')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_outpoint_outputindex = unpack(SigHash.outpoint(__scrypt_ts_txPreimage)[32 :]);
+    this.__scrypt_ts_ctx_outpoint_txid = SigHash.outpoint(__scrypt_ts_txPreimage)[0:32];
+    this.__scrypt_ts_change = {__scrypt_ts_changeAmount, __scrypt_ts_changeAddress};
+    require(checkSig(playerSig, playerPubKey));
+    require(hash160(playerPubKey) == this.playerPubKeyHash);
+    this.contractPrice = newprice;
+    bytes outputs = this.buildStateOutputNFT();
+    outputs += Utils.buildOutput(Utils.buildPublicKeyHashScript(this.FACTORY_ADDRESS), 1);
+    bytes outputScript = Utils.buildOpreturnScript(b'736e657465780000' + num2bin(newprice, 4) + this.packedGameState);
+    outputs += Utils.buildOutput(outputScript, 0);
+    outputs += this.buildChangeOutput();
+    require(hash256(outputs) == this.__scrypt_ts_ctx_hashoutputs);
+  }
+  public function performActionPacked(Sig playerSig, PubKey playerPubKey, bytes[3] actions, Item[3] items, ItemMerkleProof[3] proofs, SigHashPreimage __scrypt_ts_txPreimage, int __scrypt_ts_changeAmount, Ripemd160 __scrypt_ts_changeAddress) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'41')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_outpoint_outputindex = unpack(SigHash.outpoint(__scrypt_ts_txPreimage)[32 :]);
+    this.__scrypt_ts_ctx_outpoint_txid = SigHash.outpoint(__scrypt_ts_txPreimage)[0:32];
+    this.__scrypt_ts_change = {__scrypt_ts_changeAmount, __scrypt_ts_changeAddress};
+    require(checkSig(playerSig, playerPubKey));
+    require(hash160(playerPubKey) == this.playerPubKeyHash);
+    require(!this.isRandomEventDue);
+    GameState cstate = this.unpackState(this.packedGameState);
+    loop (3) : i {
+        Item currentItem = items[i];
+        ItemMerkleProof currentProof = proofs[i];
+        bytes currentActionPacked = actions[i];
+        if(len(currentActionPacked) > 0) {
+          bytes itemPacked = num2bin((currentItem.id), 1) + currentItem.name + num2bin((currentItem.actionType), 1) + num2bin(currentItem.priceDaySalary, 32) + num2bin(len(currentItem.possibleLocations), 1) + currentItem.possibleLocations + num2bin(len(currentItem.valuesToChange), 2) + currentItem.valuesToChange;
+          Sha256 calculatedRoot = this.calMerkleRoot(Sha256(hash256(itemPacked)), currentProof);
+          require(calculatedRoot == this.itemsRoot);
+          int currentActionType = Utils.fromLEUnsigned(currentActionPacked[0 : 1]);
+          int currentAmount = Utils.fromLEUnsigned(currentActionPacked[1 : 2]);
+          require((currentItem.actionType) == currentActionType);
+          cstate = this.processAction(cstate, currentActionType, currentItem, currentAmount);
+        }
+      }
+    this.packedGameState = this.packState(cstate);
+    Sha256 calculatedHashOutputs = hash256(this.buildStateOutputNFT() + this.buildChangeOutput());
+    require(calculatedHashOutputs == this.__scrypt_ts_ctx_hashoutputs);
+  }
+  public function triggerNewDay(Sig playerSig, PubKey playerPubKey, BlockHeader currentBlockHeader, Node[32] currentBlockMerkleProof, SigHashPreimage __scrypt_ts_txPreimage, int __scrypt_ts_changeAmount, Ripemd160 __scrypt_ts_changeAddress) {
+    require(Tx.checkPreimageSigHashType(__scrypt_ts_txPreimage, SigHashType(b'41')));
+    this.__scrypt_ts_ctx_hashoutputs = SigHash.hashOutputs(__scrypt_ts_txPreimage);
+    this.__scrypt_ts_ctx_outpoint_outputindex = unpack(SigHash.outpoint(__scrypt_ts_txPreimage)[32 :]);
+    this.__scrypt_ts_ctx_outpoint_txid = SigHash.outpoint(__scrypt_ts_txPreimage)[0:32];
+    this.__scrypt_ts_change = {__scrypt_ts_changeAmount, __scrypt_ts_changeAddress};
+    require(checkSig(playerSig, playerPubKey));
+    require(hash160(playerPubKey) == this.playerPubKeyHash);
+    require(this.isRandomEventDue);
+    Sha256 prevTxid = Sha256(this.__scrypt_ts_ctx_outpoint_txid);
+    require(Blockchain.txInBlock(prevTxid, currentBlockHeader, currentBlockMerkleProof, 32));
+    Sha256 blockHeaderHash = Blockchain.blockHeaderHash(currentBlockHeader);
+    int newRandomSeed = unpack(hash256(num2bin(this.lastRandomSeed, 32) + blockHeaderHash + prevTxid));
+    GameState cstate = this.unpackState(this.packedGameState);
+    cstate = this.updateTime(cstate, currentBlockHeader.time);
+    this.packedGameState = this.packState(cstate);
+    this.lastRandomSeed = newRandomSeed;
+    this.lastRandomEventTimestamp = currentBlockHeader.time;
+    this.isRandomEventDue = false;
+    bytes outputs = this.buildStateOutputNFT() + this.buildChangeOutput();
+    require(hash256(outputs) == this.__scrypt_ts_ctx_hashoutputs);
+  }
+  function packState(GameState gState) : bytes {
+    bytes packed = num2bin(gState.money, 4) + num2bin(gState.happiness, 4) + num2bin(gState.currentLesson, 4) + num2bin(gState.education, 4) + num2bin(gState.career, 4) + num2bin(gState.hoursLeft, 4) + num2bin(gState.maxHappiness, 4) + num2bin(gState.maxLessons, 4) + num2bin(gState.foodSupply, 4) + num2bin(gState.currentClothes, 4) + num2bin(gState.flags, 4) + num2bin(gState.flags_magic, 4) + num2bin(gState.educationalCourseCnt, 4) + num2bin(gState.jobCount, 4) + num2bin(gState.currentLocation, 1) + num2bin(gState.workLocation, 1) + num2bin(gState.investedMoney, 4) + num2bin(gState.dailySalary, 4);
+    loop (4) : i {
+        packed += num2bin(gState.Expirations[i], 4);
+      }
+    packed += num2bin(gState.lifeExpirationBlock, 4);
+    return packed;
+  }
+  function unpackState(bytes packedState) : GameState {
+    int pos = 0;
+    int money = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int happiness = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int currentLesson = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int education = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int career = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int hoursLeft = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int maxHappiness = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int maxLessons = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int foodSupply = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int currentClothes = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int flags = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int flags_magic = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int educationalCourseCnt = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int jobCount = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int currentLocation = unpack(packedState[pos : pos + 1]);
+    pos += 1;
+    int workLocation = unpack(packedState[pos : pos + 1]);
+    pos += 1;
+    int investedMoney = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int dailySalary = unpack(packedState[pos : pos + 4]);
+    pos += 4;
+    int[4] expirations = [0, 0, 0, 0];
+    loop (4) : i {
+        expirations[i] = unpack(packedState[pos : pos + 4]);
+        pos += 4;
+      }
+    int lifeExpirationBlock = unpack(packedState[pos : pos + 4]);
+    return {money, happiness, currentLesson, education, career, hoursLeft, maxHappiness, maxLessons, foodSupply, currentClothes, flags, flags_magic, educationalCourseCnt, jobCount, currentLocation, workLocation, investedMoney, dailySalary, expirations, lifeExpirationBlock};
+  }
+  function getInitialState() : GameState {
+    return {1500, 30, 0, 0, 0, 24, 50, 20, 3, 0, 0, 0, 0, 0, 4, 255, 0, 30, [8, 0, 0, 0], 100};
+  }
+  function calMerkleRoot(Sha256 leaf, ItemMerkleProof proof) : Sha256 {
+    Sha256 h = leaf;
+    int pos = proof.index;
+    loop (6) : i {
+        Sha256 sibling = proof.siblings[i];
+        h = ((pos & 1) == 0) ? Sha256(hash256(h + sibling)) : Sha256(hash256(sibling + h));
+        pos = (pos >> 1);
+      }
+    return h;
+  }
+  function itemIdToLoc(int itemId) : int {
+    require(itemId >= 0 && itemId <= 11);
+    return itemId;
+  }
+  function isAt(int location, bytes possible) : bool {
+    int total = len(possible);
+    bool found = false;
+    bytes locBS = num2bin(location, 1);
+    loop (3) : i {
+        if(i < total && possible[i : i + 1] == locBS) {
+          found = true;
+        }
+      }
+    return found;
+  }
+  function getRandomValue(int range) : int {
+    int positiveSeed = this.lastRandomSeed >= 0 ? this.lastRandomSeed : -this.lastRandomSeed;
+    return positiveSeed % range;
+  }
+  function calcMoveCost(int flags, int travel_card_days, int from, int to) : int {
+    int f = from;
+    int t = to;
+    
+    int cw = (t - f + 12) % 12;
+    int ccw = (f - t + 12) % 12;
+    int dist = min(cw, ccw);
+    int flagCount = 0;
+    if((flags & 16) != 0) flagCount++;
+    if(travel_card_days > 0) flagCount++;
+    if((flags & 64) != 0) flagCount++;
+    if((flags & 4) != 0) flagCount++;
+    return max(1, min(5, dist) - flagCount);
+  }
+  function getReqClothes(int loc) : int {
+    int res = 0;
+    if(loc == 0) {
+        res = 1;
+      } else if(loc == 5) {
+        res = 2;
+      } else if(loc == 6) {
+        res = 3;
+      } else if(loc == 2) {
+        res = 4;
+      } else if(loc == 3) {
+        res = 5;
+      } else if(loc == 1) {
+        res = 6;
+      } else if(loc == 9) {
+        res = 7;
+      } else if(loc == 10) {
+        res = 8;
+      } else if(loc == 11) {
+        res = 9;
+      }
+    return res;
+  }
+  function getPrice(GameState cstate, Item item) : int {
+    int price = max(item.priceDaySalary * cstate.dailySalary / 10, 20);
+    int mflags = cstate.flags_magic;
+    if((mflags & 2) != 0 && this.isAt(8, item.possibleLocations)) price = price * 75 / 100;
+    if((mflags & 4) != 0) price = price * 120 / 100;
+    if((mflags & 8) != 0 && this.isAt(9, item.possibleLocations)) price = price * 70 / 100;
+    if((mflags & 16) != 0) price = price * 125 / 100;
+    return price;
+  }
+  function updateStateByItem(GameState cstate, bytes values) : GameState {
+    int pos = 0;
+    int length = len(values);
+    loop (3) : i {
+        if(pos < length) {
+          int index = unpack(values[pos : pos + 1]);
+          pos++;
+          bool isFlag = index >= (ValueChanges.flag_has_dietwise_flag);
+          int size = 2;
+          if(isFlag) {
+            size = 1;
+          }
+          int val = unpack(values[pos : pos + size]);
+          pos += size;
+          if(isFlag) {
+            int mask = (1 << index - (ValueChanges.flag_has_dietwise_flag));
+            if(val == 1) {
+              cstate.flags = (cstate.flags | mask);
+            } else {
+              cstate.flags = (cstate.flags & ~mask);
+            }
+          } else {
+            if(index == (ValueChanges.money)) cstate.money += val; else if(index == (ValueChanges.happiness)) cstate.happiness = min(cstate.maxHappiness, cstate.happiness + val); else if(index == (ValueChanges.foodSupply)) {
+              int maxFood = 10;
+              if((cstate.flags & 128) != 0) maxFood += 10;
+              if((cstate.flags & 8) != 0) maxFood += 10;
+              cstate.foodSupply = min(maxFood, cstate.foodSupply + val);
+            } else if(index == (ValueChanges.educationalCourseCnt)) cstate.educationalCourseCnt += val; else if(index >= (ValueChanges.exp1) && index <= (ValueChanges.exp4)) cstate.Expirations[(index - (ValueChanges.exp1))] += val;
+          }
+        }
+      }
+    return cstate;
+  }
+  function updateTime(GameState cstate, int currentTime) : GameState {
+    int blocks = (currentTime - this.lastRandomEventTimestamp) / 600;
+    cstate.lifeExpirationBlock -= blocks;
+    if(cstate.lifeExpirationBlock <= 0) {
+        cstate.lifeExpirationBlock = 0;
+        cstate.flags = (cstate.flags | 128);
+      }
+    cstate.hoursLeft = 24;
+    loop (4) : i {
+        if(cstate.Expirations[i] > 0) cstate.Expirations[i]--;
+      }
+    int eventType = (this.getRandomValue(100)) + 1;
+    if(eventType <= 70) {
+        int hChange = (cstate.happiness * (1 + this.getRandomValue(35))) / 100;
+        int mChange = (cstate.money * (1 + this.getRandomValue(35))) / 100;
+        cstate.happiness = (this.getRandomValue(2) == 0) ? min(cstate.maxHappiness, cstate.happiness + hChange) : max(0, cstate.happiness - hChange);
+        cstate.money = max(0, cstate.money - mChange);
+      } else if(eventType <= 80) {
+        cstate.maxHappiness += 1;
+      } else {
+        int flagToRemove = (1 << this.getRandomValue(8));
+        if(flagToRemove != 2 || (cstate.Expirations[2] == 0 && (cstate.flags & 2) != 0)) {
+          cstate.flags = (cstate.flags & ~flagToRemove);
+        }
+      }
+    return cstate;
+  }
+  function processAction(GameState cstate, int actionType, Item item, int amount) : GameState {
+    require(cstate.hoursLeft > 0);
+    require((cstate.flags & 128) == 0);
+    if(actionType == (ActionType.MOVE)) {
+        int nextLoc = this.itemIdToLoc(amount);
+        require(amount < 12 && nextLoc != cstate.currentLocation);
+        int cost = this.calcMoveCost(cstate.flags, cstate.Expirations[1], cstate.currentLocation, nextLoc);
+        require(cstate.hoursLeft >= cost);
+        cstate.hoursLeft -= cost;
+        cstate.currentLocation = nextLoc;
+      } else if(actionType == (ActionType.WORK)) {
+        require(cstate.currentLocation == cstate.workLocation && cstate.happiness > 0 && cstate.hoursLeft >= amount && amount > 0);
+        cstate.hoursLeft -= amount;
+        int totalJob = cstate.jobCount + amount;
+        cstate.career = min(31, cstate.career + (totalJob / 99));
+        cstate.jobCount = totalJob % 99;
+        int hLoss = 10;
+        if((cstate.flags_magic & 1) != 0) {
+          hLoss = 7;
+        }
+        if(cstate.currentClothes == this.getReqClothes(cstate.workLocation)) hLoss -= 3;
+        int totalHLoss = max(1, hLoss) * amount;
+        int fullSalHours = cstate.happiness / max(1, hLoss);
+        int halfSalHours = amount > fullSalHours ? amount - fullSalHours : 0;
+        cstate.money += (cstate.dailySalary * fullSalHours) + ((cstate.dailySalary / 2) * halfSalHours);
+        cstate.happiness = max(0, cstate.happiness - totalHLoss);
+      } else if(actionType == (ActionType.STUDY)) {
+        require(cstate.happiness > 0 && cstate.currentLocation == 8 && cstate.hoursLeft >= amount && amount > 0);
+        if(cstate.currentLesson == 0) {
+          require(cstate.educationalCourseCnt > 0);
+          cstate.educationalCourseCnt--;
+        }
+        int totalLess = cstate.currentLesson + amount;
+        int comp = totalLess / cstate.maxLessons;
+        cstate.education = min(99, cstate.education + comp);
+        cstate.educationalCourseCnt -= comp;
+        cstate.currentLesson = totalLess % cstate.maxLessons;
+        cstate.maxLessons = 99;
+        int hGain = 10;
+        if((cstate.flags_magic & 2) != 0) {
+          hGain = 7;
+        }
+        if(cstate.currentClothes == this.getReqClothes(8)) hGain -= 3;
+        cstate.happiness = min(cstate.maxHappiness, cstate.happiness + (comp * cstate.maxHappiness) + (hGain * amount));
+        cstate.hoursLeft -= amount;
+      } else if(actionType == (ActionType.CHANGE_CLOTHES)) {
+        bool isHome = (cstate.flags & 2) != 0;
+        int reqLoc = 4;
+        if(isHome) reqLoc = 7;
+        require(cstate.currentLocation == reqLoc);
+        int newClothes = (item.id - ItemId.BANK_WORKER_CLOTHES) + 1;
+        require(cstate.currentClothes != newClothes && (cstate.flags & (1 << (item.id) - (ItemId.BANK_WORKER_CLOTHES) + 8)) != 0);
+        cstate.currentClothes = newClothes;
+        cstate.hoursLeft--;
+      } else if(actionType == (ActionType.FIND_JOB)) {
+        require(cstate.workLocation == 255 && cstate.currentLocation == 6 && cstate.hoursLeft >= 1);
+        cstate.hoursLeft--;
+        int[9] workLocs = [0, 1, 2, 3, 5, 6, 9, 10, 11];
+        cstate.workLocation = workLocs[(this.getRandomValue(9))];
+        cstate.dailySalary = cstate.education + cstate.career + max(30, cstate.happiness) + cstate.educationalCourseCnt;
+        cstate.happiness = min(cstate.maxHappiness, cstate.happiness + 5);
+      } else if(actionType == (ActionType.QUIT_JOB)) {
+        require(cstate.workLocation != 255 && cstate.currentLocation == 6);
+        cstate.workLocation = 255;
+        cstate.hoursLeft--;
+      } else if(actionType == (ActionType.PAY_RENT)) {
+        int expIdx = -1;
+        if(item.id == ItemId.RENT) expIdx = 0; else if(item.id == ItemId.TRAVEL_CARD) expIdx = 1; else if(item.id == ItemId.PROPERTY_INSURANCE) expIdx = 2; else if(item.id == ItemId.NutriCore) expIdx = 3;
+        if(expIdx >= 0) {
+          int addDays = min(15 - cstate.Expirations[(expIdx)], amount);
+          int cost = this.getPrice(cstate, item) * addDays;
+          require(cstate.money >= cost);
+          cstate.money -= cost;
+          cstate.Expirations[(expIdx)] += addDays;
+          cstate.hoursLeft--;
+        }
+      } else if(actionType == (ActionType.INVEST) || actionType == (ActionType.WITHDRAW)) {
+        require(cstate.currentLocation == 0 && amount >= 1 && amount <= 10);
+        int sum = (actionType == (ActionType.INVEST) ? cstate.money : cstate.investedMoney) * amount * 10 / 100;
+        if(sum == 0 && (actionType == (ActionType.INVEST) ? cstate.money : cstate.investedMoney) > 0) sum = 1;
+        require(sum > 0);
+        if(actionType == (ActionType.INVEST)) {
+          require(cstate.money >= sum);
+          cstate.money -= sum;
+          cstate.investedMoney += sum;
+        } else {
+          require(cstate.investedMoney >= sum);
+          cstate.investedMoney -= sum;
+          cstate.money += sum;
+        }
+        cstate.hoursLeft--;
+      } else if(actionType == (ActionType.REST)) {
+        bool isHome = (cstate.flags & 2) != 0;
+        int reqLoc = 4;
+        if(isHome) reqLoc = 7;
+        require(cstate.currentLocation == reqLoc && this.isAt(cstate.currentLocation, item.possibleLocations) && cstate.hoursLeft >= amount);
+        cstate.happiness = min(cstate.maxHappiness, cstate.happiness + (cstate.maxHappiness * 15 * amount / 100));
+        cstate.hoursLeft -= amount;
+      } else if(actionType == (ActionType.EAT)) {
+        bool isHome = (cstate.flags & 2) != 0;
+        int reqLoc = 4;
+        if(isHome) reqLoc = 7;
+        require(cstate.currentLocation == reqLoc && amount > 0 && cstate.foodSupply >= amount);
+        cstate.foodSupply -= amount;
+        int mult = 1;
+        if((cstate.flags & 1) != 0) mult++;
+        if(cstate.Expirations[3] > 0) mult++;
+        cstate.lifeExpirationBlock += amount * 4 * mult;
+        cstate.hoursLeft--;
+        cstate.happiness = min(cstate.maxHappiness, cstate.happiness + 2);
+      } else if(actionType == (ActionType.BUY_ITEM)) {
+        require(this.isAt(cstate.currentLocation, item.possibleLocations));
+        int price = this.getPrice(cstate, item);
+        require(cstate.money >= price);
+        cstate = this.updateStateByItem(cstate, item.valuesToChange);
+        cstate.money -= price;
+        cstate.hoursLeft--;
+      }
+    if(cstate.hoursLeft == 0) this.isRandomEventDue = true;
+    return cstate;
+  }
+  function buildStateOutput(int amount) : bytes {  return Utils.buildOutput(this.getStateScript(), amount);}
+  function buildChangeOutput() : bytes {  return this.__scrypt_ts_change.amount > 0 ? Utils.buildOutput(Utils.buildPublicKeyHashScript(this.__scrypt_ts_change.address), this.__scrypt_ts_change.amount) : b'';}
+}
