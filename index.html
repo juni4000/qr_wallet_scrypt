@@ -1714,11 +1714,9 @@
                     // But scrypt-ts `DefaultProvider` (TaalProvider) uses specific paths.
                     // Let's monkey patch sendRawTransaction to be sure.
                     provider.sendRawTransaction = async function (rawTxHex) {
-                        console.log("Broadcasting via updated ARC endpoint (with CORS proxy)...");
+                        console.log("Broadcasting via ARC endpoint...");
                         console.log("[DEBUG] Raw TX hex length:", rawTxHex?.length);
-                        console.log("[DEBUG] Raw TX hex (first 200):", rawTxHex?.substring(0, 200));
-                        // Use corsproxy.io to bypass the multiple-CORS-header issue on the TAAL endpoint
-                        const targetUrl = encodeURIComponent('https://arc.taal.com/v1/tx');
+                        const directUrl = 'https://arc.taal.com/v1/tx';
                         const apiKeyInput = document.getElementById('customApiKey');
                         let apiKey = apiKeyInput.value;
 
@@ -1737,18 +1735,38 @@
                             console.warn("No API Key provided for ARC broadcast!");
                         }
 
-                        const res = await fetch(`https://corsproxy.io/?${targetUrl}`, {
-                            method: 'POST',
-                            headers: headers,
-                            body: this.isEmpty(rawTxHex) ? null : this.hexToUint8Array(rawTxHex)
-                        });
+                        const body = this.isEmpty(rawTxHex) ? null : this.hexToUint8Array(rawTxHex);
+                        const isHttps = window.location.protocol === 'https:';
 
-                        if (!res.ok) {
-                            const text = await res.text();
-                            throw new Error(`ARC Broadcast failed: ${text}`);
+                        // Try direct first if on HTTPS, fallback to proxy
+                        const tryBroadcast = async (url) => {
+                            const res = await fetch(url, {
+                                method: 'POST',
+                                headers: headers,
+                                body: body
+                            });
+                            if (!res.ok) {
+                                const text = await res.text();
+                                throw new Error(`ARC Broadcast failed: ${text}`);
+                            }
+                            return await res.json();
+                        };
+
+                        try {
+                            // Try direct first (works on HTTPS, may fail on file://)
+                            if (isHttps) {
+                                console.log("Trying direct ARC broadcast...");
+                                const json = await tryBroadcast(directUrl);
+                                return json.txid;
+                            }
+                        } catch (e) {
+                            console.warn("Direct broadcast failed:", e.message);
                         }
 
-                        const json = await res.json();
+                        // Fallback to proxy
+                        console.log("Using CORS proxy for ARC broadcast...");
+                        const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(directUrl);
+                        const json = await tryBroadcast(proxyUrl);
                         return json.txid;
                     };
 
@@ -3241,36 +3259,7 @@
 
         // --- Smart Contract Recovery ---
 
-        // precise-bulk-fetch helper
-        async function fetchBulkTxHex(txids) {
-            const url = 'https://api.whatsonchain.com/v1/bsv/main/txs/hex';
-            // Use corsproxy to ensure it works from file:// and avoids CORS issues
-            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
-
-            try {
-                const resp = await fetch(proxyUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ txids })
-                });
-
-                if (!resp.ok) {
-                    console.warn(`Bulk fetch status: ${resp.status}`);
-                    return [];
-                }
-
-                // WOC returns array of { txid, hex, error? }
-                return await resp.json();
-            } catch (e) {
-                console.error("Bulk fetch error:", e);
-                return [];
-            }
-        }
-
-        // --- Smart Contract Recovery ---
-
-        // precise-bulk-fetch helper
-        // precise-bulk-fetch helper
+        // precise-bulk-fetch helper (tries direct first, falls back to proxy)
         async function fetchBulkTxHex(txids) {
             const url = 'https://api.whatsonchain.com/v1/bsv/main/txs/hex';
 
