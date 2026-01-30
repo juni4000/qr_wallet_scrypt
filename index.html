@@ -1422,7 +1422,7 @@
 
                     const type = 2n; // MOVE
                     const id = BigInt(ItemId.MOVE_ACTION); // Always use MOVE_ACTION item (id=35)
-                    const destination = BigInt('0x' + loc.id); // Destination location encoded as amount
+                    const destination = BigInt(parseInt(loc.id, 16)); // Destination location encoded as amount
                     const name = `Move to ${loc.name}`;
                     addToQueue(type, id, destination, name);
 
@@ -2335,8 +2335,8 @@
                     return;
                 }
 
-                const targetLocId = BigInt('0x' + targetLocHex);
-                const currentLocId = BigInt('0x' + currentState.currentLocation);
+                const targetLocId = BigInt(parseInt(targetLocHex, 16));
+                const currentLocId = BigInt(parseInt(currentState.currentLocation, 16));
 
                 if (targetLocId !== currentLocId) {
                     newActions.push({ type: MOVE, id: targetLocId, amount: 0n, name: "Move to Work" });
@@ -2599,7 +2599,7 @@
         }
 
         function calculateMoveCostClient(state, toLocId) {
-            const fromLocId = BigInt('0x' + state.currentLocation);
+            const fromLocId = BigInt(parseInt(state.currentLocation, 16));
             const toLoc = BigInt(toLocId);
             const MAX_LOC = 12n;
 

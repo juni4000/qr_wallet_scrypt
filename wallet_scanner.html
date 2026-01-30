@@ -27,7 +27,7 @@
 
         .container {
             width: 100%;
-            max-width: 1000px;
+            max-width: 1200px;
         }
 
         .header {
@@ -146,6 +146,10 @@
             color: var(--warning);
         }
 
+        #log div.error {
+            color: var(--error);
+        }
+
         .results-grid {
             display: grid;
             grid-template-columns: 1fr;
@@ -166,7 +170,7 @@
         }
 
         .contract-card:hover {
-            transform: scale(1.01);
+            transform: scale(1.005);
         }
 
         .badge {
@@ -191,19 +195,23 @@
         }
 
         .field {
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             font-size: 14px;
+            display: flex;
+            align-items: baseline;
         }
 
         .label {
             color: #94a3b8;
             font-weight: 500;
             margin-right: 8px;
+            min-width: 80px;
         }
 
         .value {
             color: #f8fafc;
             word-break: break-all;
+            font-family: monospace;
         }
 
         .tx-link {
@@ -215,6 +223,44 @@
         .tx-link:hover {
             text-decoration: underline;
         }
+
+        .state-details {
+            margin-top: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 10px;
+        }
+
+        .state-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .state-item .k {
+            font-size: 11px;
+            color: #94a3b8;
+            text-transform: uppercase;
+        }
+
+        .state-item .v {
+            font-size: 14px;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .method-tag {
+            display: inline-block;
+            background: #334155;
+            color: #e2e8f0;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-left: 10px;
+            font-family: sans-serif;
+        }
     </style>
 </head>
 
@@ -222,23 +268,22 @@
     <div class="container">
         <div class="header">
             <h1>Ultra Wallet Scanner</h1>
-            <p>Scanning UTXOs and History for Tamagochi Contracts</p>
+            <p>Scanning UTXOs and History for Tamagochi Contracts with State Decoding</p>
         </div>
 
         <div class="input-group">
             <div class="row">
-                <button class="btn-secondary" onclick="document.getElementById('fileInput').click()">📁 Load
-                    Tamagochi_v1.json</button>
-                <input type="file" id="fileInput" accept=".json" onchange="handleFileSelect(event)">
+                <button class="btn-secondary" onclick="document.getElementById('fileInput').click()">📁 Load Artifact
+                    (.json / .js)</button>
+                <input type="file" id="fileInput" accept=".json,.js" onchange="handleFileSelect(event)">
                 <span id="artifactLabel" class="artifact-status">Artifact not loaded</span>
                 <div style="flex: 1"></div>
-                <label style="font-size: 12px; color: #94a3b8;">Required for offline use (CORS)</label>
             </div>
             <div class="row">
                 <input type="text" id="address" placeholder="Enter BSV Address..."
                     value="1FAKiEhReUbVha5Fac94ao47u2kq4mmpnA">
                 <input type="number" id="depth" placeholder="Depth" value="300" style="max-width: 100px;">
-                <button id="btnScan" onclick="startScan()" disabled>Start scan</button>
+                <button id="btnScan" onclick="startScan()">Start scan</button>
             </div>
         </div>
 
@@ -266,7 +311,11 @@
         <div class="results-grid" id="results"></div>
     </div>
 
+    <!-- Include artifact.js if available locally -->
+    <script src="artifact.js"></script>
+    <!-- Include the Scrypt bundle -->
     <script src="scrypt_bundle.js"></script>
+
     <script>
         const logBox = document.getElementById('log');
         const resultsBox = document.getElementById('results');
@@ -293,6 +342,16 @@
 
         let loadedArtifact = null;
 
+        // Auto-load artifact if global exists
+        window.addEventListener('load', () => {
+            if (window.GAME_CONTRACT_ARTIFACT) {
+                loadedArtifact = window.GAME_CONTRACT_ARTIFACT;
+                document.getElementById('artifactLabel').innerText = "Artifact: artifact.js (Global)";
+                document.getElementById('artifactLabel').classList.add('loaded');
+                log("Artifact loaded from artifact.js (global variable).", "success");
+            }
+        });
+
         function handleFileSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -300,13 +359,25 @@
             const reader = new FileReader();
             reader.onload = function (e) {
                 try {
-                    loadedArtifact = JSON.parse(e.target.result);
+                    let content = e.target.result;
+                    if (file.name.endsWith('.js')) {
+                        // Try to extract JSON object from JS "const X = { ... }"
+                        // Simple heuristic: find first '{' and last '}'
+                        const start = content.indexOf('{');
+                        const end = content.lastIndexOf('}');
+                        if (start !== -1 && end !== -1) {
+                            content = content.substring(start, end + 1);
+                        } else {
+                            throw new Error("Could not find JSON object in JS file");
+                        }
+                    }
+                    loadedArtifact = JSON.parse(content);
                     document.getElementById('artifactLabel').innerText = "Artifact: " + file.name;
                     document.getElementById('artifactLabel').classList.add('loaded');
-                    document.getElementById('btnScan').disabled = false;
-                    log(`Artifact ${file.name} loaded from local file.`, "success");
+                    log(`Artifact ${file.name} loaded successfully.`, "success");
                 } catch (err) {
-                    alert("Invalid JSON file");
+                    log(`Error loading artifact: ${err.message}`, "error");
+                    alert("Invalid file: " + err.message);
                 }
             };
             reader.readAsText(file);
@@ -317,6 +388,47 @@
             return hex.match(/../g).reverse().join('');
         };
 
+        // Try to identify method called
+        function identifyMethod(tx, abi) {
+            // Usually scrypt-ts public calls have the method index as the last argument in the input script
+            // Or the function selector.
+            // For now, let's just log the chunks count or try to map index
+            // Assuming inputs[0] is the contract spend.
+            if (!tx.inputs || tx.inputs.length === 0) return "Unknown";
+
+            // This is a rough heuristic for display purposes
+            // We would need the full ASM to be sure, or better scrypt tools
+            // But we can just return "Contract Call" for now if we can't be sure
+            return "Contract Interaction";
+        }
+
+        function decodeState(instance) {
+            try {
+                // If the instance has a state property, use that (scrypt-ts usually hydrates properties)
+                // However, we might need to manually unpack if it hasn't run 'fromTx' fully or if we want raw access
+                // Let's assume instance has the properties defined in the Struct
+
+                // If instance.unpackState exists, use it
+                if (instance.unpackState && instance.packedGameState) {
+                    return instance.unpackState(instance.packedGameState);
+                }
+
+                // Fallback: iterate ABI stateProps
+                const parsed = {};
+                // If we can't rely on properties being auto-set
+                // We rely on visual inspection of properties
+                if (instance.money !== undefined) parsed.money = instance.money;
+                if (instance.happiness !== undefined) parsed.happiness = instance.happiness;
+
+                // If we got nothing, return null
+                if (Object.keys(parsed).length === 0) return null;
+                return parsed;
+            } catch (e) {
+                console.warn("State decode failed", e);
+                return null;
+            }
+        }
+
         async function startScan() {
             const addr = document.getElementById('address').value.trim();
             const depth = parseInt(document.getElementById('depth').value) || 200;
@@ -324,29 +436,36 @@
 
             if (!addr) return alert("Enter address");
 
+            if (!loadedArtifact) {
+                // Try last ditch fetch
+                try {
+                    const r = await fetch('Tamagochi_v1.json');
+                    loadedArtifact = await r.json();
+                    log("Auto-loaded Tamagochi_v1.json", "success");
+                } catch (e) {
+                    return alert("Please load an artifact file first!");
+                }
+            }
+
             btn.disabled = true;
             resultsBox.innerHTML = '';
-            logBox.innerHTML = '';
             document.getElementById('stats').style.display = 'grid';
+
+            // Reset stats
+            document.getElementById('stat-utxos').innerText = '0';
+            document.getElementById('stat-history').innerText = '0';
+            document.getElementById('stat-found').innerText = '0';
+            document.getElementById('stat-live').innerText = '0';
 
             try {
                 const bundle = window.ScryptBundle || {};
-                const GameContract = window.GameContract || bundle.GameContract;
+                const GameContract = window.GameContract || bundle.GameContract; // Should be exported class
                 const scrypt = window.scrypt || bundle.scrypt;
 
-                // 1. Try to load loadedArtifact if available, else attempt fetch (for web servers)
-                if (!loadedArtifact) {
-                    log("Attempting to auto-fetch artifact...");
-                    try {
-                        const artResp = await fetch('Tamagochi_v1.json');
-                        loadedArtifact = await artResp.json();
-                    } catch (e) {
-                        throw new Error("Could not find Tamagochi_v1.json. Please use the 'Load' button to select it manually.");
-                    }
-                }
+                if (!GameContract) throw new Error("GameContract class not found in bundle. Check scrypt_bundle.js");
 
                 GameContract.loadArtifact(loadedArtifact);
-                log("Contract initialization complete.", "success");
+                log("Contract class initialized.", "success");
 
                 // 2. Fetch UTXOs
                 log(`Fetching UTXOs for ${addr}...`);
@@ -397,6 +516,8 @@
                                 const instance = GameContract.fromTx(bsvTx, outIdx);
                                 if (!instance) continue;
 
+                                // If fromTx doesn't throw, it matched the code template!
+
                                 const op = `${res.txid}:${outIdx}`;
                                 const isLive = liveOutpoints.has(op);
 
@@ -408,8 +529,22 @@
                                     contractsByGenesis[genesisId] = [];
                                 }
 
-                                const height = txHeights[res.txid] || 0; // 0 usually means unconfirmed in some APIs, or check if explicitly unconfirmed
+                                const height = txHeights[res.txid] || 0;
                                 const isUnconfirmed = height <= 0 || height === undefined;
+
+                                // Decode state
+                                // Note: instance properties should be populated
+                                let decoded = null;
+                                if (typeof instance.unpackState === 'function') {
+                                    decoded = instance.unpackState(instance.packedGameState);
+                                } else {
+                                    // Try manual prop access if simple properties exist
+                                    decoded = {
+                                        money: instance.money,
+                                        happiness: instance.happiness,
+                                        education: instance.education
+                                    };
+                                }
 
                                 contractsByGenesis[genesisId].push({
                                     txid: res.txid,
@@ -418,7 +553,8 @@
                                     genesisId,
                                     state: instance.packedGameState,
                                     height: height,
-                                    isUnconfirmed
+                                    isUnconfirmed,
+                                    decoded // The decoded object
                                 });
 
                                 if (isLive) liveCount++;
@@ -426,7 +562,11 @@
                                 document.getElementById('stat-found').innerText = foundCount;
                                 document.getElementById('stat-live').innerText = liveCount;
 
-                            } catch (e) { } // Not a contract
+                            } catch (e) {
+                                // Not a contract or failed to parse
+                                // If we want to debug, we could log:
+                                // console.log(`Tx ${res.txid} out ${outIdx} failed: ${e.message}`);
+                            }
                         }
                     }
                 }
@@ -446,7 +586,7 @@
                         groupDiv.style.padding = '20px';
                         groupDiv.style.background = '#1e293b';
 
-                        // Sort the chain: Height ASC (oldest first). Unconfirmed (height 0) at the end.
+                        // Sort the chain: Height ASC (oldest first). Unconfirmed at end.
                         const chain = contractsByGenesis[genId];
                         chain.sort((a, b) => {
                             const ha = a.height <= 0 ? Infinity : a.height;
@@ -465,7 +605,6 @@
 
                         chain.forEach(c => {
                             const card = document.createElement('div');
-                            // Style unconfirmed distinctively?
                             const statusClass = c.isUnconfirmed ? 'warning' : (c.isLive ? 'live' : '');
                             const borderColor = c.isUnconfirmed ? '#f59e0b' : (c.isLive ? '#10b981' : '#334155');
 
@@ -481,13 +620,39 @@
                                 badgeHtml = `<span class="badge spent">Spent</span>`;
                             }
 
+                            // Format decoded state
+                            let detailsHtml = '';
+                            if (c.decoded) {
+                                let itemsHtml = '';
+
+                                // Key fields to show
+                                const keys = ['money', 'happiness', 'hoursLeft', 'foodSupply', 'education', 'career'];
+
+                                // Helper to formatting BigInt
+                                const fmt = (v) => typeof v === 'bigint' ? v.toString() : v;
+
+                                keys.forEach(k => {
+                                    if (c.decoded[k] !== undefined) {
+                                        itemsHtml += `<div class="state-item"><span class="k">${k}</span><span class="v">${fmt(c.decoded[k])}</span></div>`;
+                                    }
+                                });
+
+                                // Add location if present (hex or int)
+                                if (c.decoded.currentLocation) {
+                                    itemsHtml += `<div class="state-item"><span class="k">Location</span><span class="v">${c.decoded.currentLocation}</span></div>`;
+                                }
+
+                                detailsHtml = `<div class="state-details">${itemsHtml}</div>`;
+                            }
+
                             card.innerHTML = `
                                 ${badgeHtml}
                                 <div class="field"><span class="label">TxID:</span><span class="value">
-                                    <a class="tx-link" href="https://whatsonchain.com/tx/${c.txid}" target="_blank">${c.txid}</a>
-                                </span></div>
+                                    <a class="tx-link" href="https://whatsonchain.com/tx/${c.txid}" target="_blank">${c.txid.substring(0, 20)}...</a>
+                                </span> <span class="method-tag">Contract Validated</span></div>
                                 <div class="field"><span class="label">Index:</span><span class="value">${c.outIdx}</span> <span class="label" style="margin-left:10px">Height:</span><span class="value">${c.height > 0 ? c.height : 'Mempool'}</span></div>
-                                <div class="field"><span class="label">State:</span><span class="value">${c.state.substring(0, 64)}...</span></div>
+                                ${detailsHtml}
+                                <div style="margin-top:10px; font-size:10px; color:#555; word-break:break-all">State Hex: ${c.state.substring(0, 32)}...</div>
                             `;
                             list.appendChild(card);
                         });
@@ -504,7 +669,7 @@
                 console.error(e);
             } finally {
                 btn.disabled = false;
-                btn.innerText = "Start deep scan";
+                btn.innerText = "Start scan";
             }
         }
     </script>
