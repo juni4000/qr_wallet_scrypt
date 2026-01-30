@@ -6,8 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Scrypt Contract Test</title>
     <!-- Load the bundled scrypt code -->
-    <script src="scrypt_bundle.js?v=202601292340"></script>
-    <script src="artifact.js?v=202601292340"></script>
+    <script src="scrypt_bundle.js?v=202601301438"></script>
+    <script src="artifact.js?v=202601301438"></script>
     <style>
         :root {
             --bg-primary: #eef2f5;
@@ -3027,7 +3027,13 @@
                     console.log('[DEBUG] First action detected. Syncing nextInstance.genesisTxId with currentTxId:', currentTxId);
                     // Contract stores genesisTxId as outpoint.txid (Little Endian).
                     // currentTxId is Big Endian (Display). We must reverse it.
-                    nextInstance.genesisTxId = scrypt.reverseByteString(currentTxId, 32n);
+                    // instance.genesisTxId expects a hex string.
+                    if (currentTxId.length === 64) {
+                        const reversed = currentTxId.match(/../g).reverse().join('');
+                        nextInstance.genesisTxId = reversed;
+                    } else {
+                        nextInstance.genesisTxId = currentTxId; // Fallback
+                    }
                 }
 
                 console.log('[DEBUG] === Prop Comparison ===');
@@ -3097,6 +3103,14 @@
                             const actionType = scrypt.Utils.fromLEUnsigned(scrypt.slice(actionsArr[i], 0n, 1n));
                             const amount = scrypt.Utils.fromLEUnsigned(scrypt.slice(actionsArr[i], 1n, 2n));
                             dryState = instance.processAction(dryState, actionType, itemsArr[i], amount);
+                            console.log(`[DEBUG] DryRun post-action ${i}: clothes=${dryState.currentClothes}, flags=${dryState.flags.toString(16)}, hours=${dryState.hoursLeft}`);
+                            if (actionType === 1n) { // CHANGE_CLOTHES checks
+                                const targetClothesId = amount;
+                                const CLOTHES_FLAG_START = 8n;
+                                const clothFlagBit = BigInt(targetClothesId) - 25n + CLOTHES_FLAG_START;
+                                const clothFlag = 1n << clothFlagBit;
+                                console.log(`[DEBUG] Check Flag for clothes ${amount}: bit=${clothFlagBit}, mask=${clothFlag.toString(16)}, hasFlag=${(dryState.flags & clothFlag) !== 0n}`);
+                            }
                         }
                     }
 
@@ -3366,6 +3380,7 @@
                 log(`Found ${utxos.length} UTXOs. Checking for live contracts...`);
 
                 const candidates = {}; // map: groupKey -> array of {instance, txId, outIdx, isLive, height}
+                let scanIndexCounter = 0;
 
                 // Shared Processor
                 const processTxResult = (txId, txHex, height = 0) => {
@@ -3403,7 +3418,8 @@
                                     isLive,
                                     height,
                                     isGenesis,
-                                    instance
+                                    instance,
+                                    scanIndex: scanIndexCounter++
                                 });
 
                             } catch (e) { } // Not a contract
@@ -3411,7 +3427,15 @@
                     } catch (e) { console.warn(e); }
                 };
 
-                // 2. Process UTXOs first
+                // 2. Process UTXOs first (Sort so Newest/Unconfirmed are processed first)
+                // We want Mempool (height=0/null) > High Block > Low Block
+                utxos.sort((a, b) => {
+                    const hA = (a.height <= 0) ? Infinity : a.height;
+                    const hB = (b.height <= 0) ? Infinity : b.height;
+                    if (hA !== hB) return hB - hA; // Infinity > 1000
+                    return 0;
+                });
+
                 const utxoTxIds = [...new Set(utxos.map(u => u.tx_hash))];
                 for (let i = 0; i < utxoTxIds.length; i += 20) {
                     const batch = utxoTxIds.slice(i, i + 20);
@@ -3450,23 +3474,52 @@
                 groups.forEach(groupKey => {
                     const group = candidates[groupKey];
 
-                    // Sort: 
-                    // 1. Live > Spent (optional, but head should be live mostly)
-                    // 2. Unconfirmed (height <= 0) > Confirmed
-                    // 3. Higher Height > Lower Height
+                    // Debug grouping
+                    if (group.length > 1) {
+                        console.log(`[ScanSort] Group ${groupKey} has ${group.length} candidates.`);
+                        group.forEach(c => {
+                            console.log(` - Tx: ${c.txId.substring(0, 8)} | Height: ${c.height} | Live: ${c.isLive} | Idx: ${c.scanIndex}`);
+                        });
+                    }
 
                     group.sort((a, b) => {
-                        // Check status first?
+                        // Sort Priorities:
+                        // 1. Unconfirmed (Infinity) > Confirmed
+                        // 2. Higher Height > Lower Height
+                        // 3. Live > Spent
+                        // 4. Index Tiebreaker:
+                        //    - Unconfirmed: Ascending (0 is Newest/Tip due to UTXO sort)
+                        //    - Confirmed: Descending (Higher is Newest/Child due to block topology)
 
                         // Height logic: Unconfirmed (<=0) is "Infinity" effectively for newness
                         const hA = (a.height <= 0) ? Infinity : a.height;
                         const hB = (b.height <= 0) ? Infinity : b.height;
 
-                        if (hA !== hB) return hB - hA; // Descending
+                        if (hA !== hB) return hB - hA; // Descending Height
 
-                        // If same height (e.g. both unconfirmed or both in same block), prefer Live
-                        return a.isLive ? -1 : 1;
+                        // Tie-Breaking for SAME Height (Same Block or Both Unconfirmed):
+
+                        // 1. Liveness Check (Live > Spent)
+                        if (a.isLive !== b.isLive) return a.isLive ? -1 : 1;
+
+                        // 2. Scan Index Strategy
+                        if (hA === Infinity) {
+                            // Unconfirmed (Mempool)
+                            // We explicitly sorted UTXOs Newest-First.
+                            // So Low Index (0) = Newest.
+                            return a.scanIndex - b.scanIndex;
+                        } else {
+                            // Confirmed (History in Block)
+                            // Block transactions are usually ordered topologically (Parent -> Child).
+                            // So Higher Index = Newer State.
+                            return b.scanIndex - a.scanIndex;
+                        }
                     });
+
+                    if (group.length > 1) {
+                        const winner = group[0];
+                        console.log(`[ScanSort] Winner: ${winner.txId.substring(0, 8)}`);
+                    }
 
                     const best = group[0];
                     const label = best.isGenesis ? `Genesis: ${groupKey.substring(0, 8)}...` : `Legacy Game`;
