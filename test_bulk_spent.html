@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Bulk Spent API</title>
+</head>
+
+<body>
+    <h1>Test Bulk Spent API</h1>
+    <button onclick="testBulkSpent()">Run Test</button>
+    <div id="output"></div>
+
+    <script>
+        async function testBulkSpent() {
+            const outputDiv = document.getElementById('output');
+            outputDiv.innerHTML = "Testing...";
+
+            // Example UTXOs to check (taken from recent blocks or specific ones known to be spent/unspent)
+            // Just picking some random recent ones or provided ones if possible.
+            // Let's use the wallet address provided to find some recent txs first.
+            const address = "1FAKiEhReUbVha5Fac94ao47u2kq4mmpnA";
+
+            try {
+                // 1. Get history to find real TXIDs
+                const histResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${address}/history`);
+                const history = await histResp.json();
+
+                if (history.length === 0) {
+                    outputDiv.innerHTML = "No history found for address to test with.";
+                    return;
+                }
+
+                // Take last 5 transactions
+                const recent = history.slice(-5).reverse();
+                const utxosToCheck = recent.map(h => ({
+                    txid: h.tx_hash,
+                    vout: 0 // checking vout 0 as requested
+                }));
+
+                outputDiv.innerHTML += `<br>Checking ${utxosToCheck.length} UTXOs for spent status...`;
+                outputDiv.innerHTML += `<br>Payload: ${JSON.stringify(utxosToCheck)}`;
+
+                // 2. Call Bulk Spent API
+                const response = await fetch('https://api.whatsonchain.com/v1/bsv/main/utxos/spent', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ utxos: utxosToCheck })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                outputDiv.innerHTML += `<br><strong>Response:</strong> <pre>${JSON.stringify(data, null, 2)}</pre>`;
+
+                // Verify structure
+                if (Array.isArray(data)) {
+                    outputDiv.innerHTML += `<br><span style="color:green">Success: Received array response.</span>`;
+                } else {
+                    outputDiv.innerHTML += `<br><span style="color:red">Failed: Expected array response.</span>`;
+                }
+
+            } catch (error) {
+                outputDiv.innerHTML += `<br><span style="color:red">Error: ${error.message}</span>`;
+            }
+        }
+    </script>
+</body>
+
+</html>

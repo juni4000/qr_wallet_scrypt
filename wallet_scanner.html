@@ -282,8 +282,14 @@
             <div class="row">
                 <input type="text" id="address" placeholder="Enter BSV Address..."
                     value="1FAKiEhReUbVha5Fac94ao47u2kq4mmpnA">
-                <input type="number" id="depth" placeholder="Depth" value="300" style="max-width: 100px;">
+                <div style="display:flex; align-items:center; gap:5px;">
+                    <input type="range" id="depth" min="20" max="600" step="20" value="300"
+                        oninput="document.getElementById('depthDisplay').innerText = this.value">
+                    <span id="depthDisplay" style="min-width:30px; text-align:right; font-family:monospace">300</span>
+                </div>
                 <button id="btnScan" onclick="startScan()">Start scan</button>
+                <button id="btnDebug" class="btn-secondary" onclick="debugScan()"
+                    style="background:#f59e0b; margin-left: 10px;">Debug Check (30)</button>
             </div>
         </div>
 
@@ -330,7 +336,7 @@
 
         async function fetchBulkHex(txids) {
             if (txids.length === 0) return [];
-            log(`Fetching hex for ${txids.length} txs...`);
+
             const url = 'https://api.whatsonchain.com/v1/bsv/main/txs/hex';
             const resp = await fetch(url, {
                 method: 'POST',
@@ -437,7 +443,6 @@
             if (!addr) return alert("Enter address");
 
             if (!loadedArtifact) {
-                // Try last ditch fetch
                 try {
                     const r = await fetch('Tamagochi_v1.json');
                     loadedArtifact = await r.json();
@@ -459,7 +464,7 @@
 
             try {
                 const bundle = window.ScryptBundle || {};
-                const GameContract = window.GameContract || bundle.GameContract; // Should be exported class
+                const GameContract = window.GameContract || bundle.GameContract;
                 const scrypt = window.scrypt || bundle.scrypt;
 
                 if (!GameContract) throw new Error("GameContract class not found in bundle. Check scrypt_bundle.js");
@@ -467,45 +472,66 @@
                 GameContract.loadArtifact(loadedArtifact);
                 log("Contract class initialized.", "success");
 
-                // 2. Fetch UTXOs
-                log(`Fetching UTXOs for ${addr}...`);
-                const utxoResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${addr}/unspent`);
-                const utxos = await utxoResp.json();
-                document.getElementById('stat-utxos').innerText = utxos.length;
-                const liveOutpoints = new Set(utxos.map(u => `${u.tx_hash}:${u.tx_pos}`));
-
+                // 3. Fetch Full History (Using POST Batch Endpoint)
+                log(`Fetching FULL history...`);
+                let history = [];
                 // Map txid to height for sorting/status
                 const txHeights = {};
-                utxos.forEach(u => { txHeights[u.tx_hash] = u.height; });
+                try {
+                    // Use standard GET endpoint for reliability (debugScan found txs with this)
+                    const histResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${addr}/history`);
+                    history = await histResp.json();
+                } catch (e) {
+                    log("History fetch failed: " + e.message, "error");
+                }
 
-                // 3. Fetch History
-                log(`Fetching history (depth ${depth})...`);
-                const histResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${addr}/history`);
-                const history = await histResp.json();
-                // Sort descending by height
+                // 3b. Fetch Unconfirmed History
+                try {
+                    const memResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${addr}/unconfirmed/history`);
+                    const memData = await memResp.json();
+
+                    // The API returns structure: { result: [...] } for unconfirmed but we should be safe
+                    let mempool = [];
+                    if (Array.isArray(memData)) {
+                        mempool = memData;
+                    } else if (memData && Array.isArray(memData.result)) {
+                        mempool = memData.result;
+                    }
+
+                    log(`Fetched ${mempool.length} unconfirmed transactions.`);
+
+                    if (mempool.length > 0) {
+                        mempool.forEach(tx => {
+                            history.push({ tx_hash: tx.tx_hash, height: 0 }); // 0 indicates unconfirmed
+                        });
+                    }
+                } catch (e) { console.warn("Mempool fetch failed", e); }
+
+                // Sort descending by height (Newest First)
                 history.sort((a, b) => (b.height || Infinity) - (a.height || Infinity));
+
+                // Apply Depth Limit
                 const recent = history.slice(0, depth);
-                document.getElementById('stat-history').innerText = recent.length;
+                document.getElementById('stat-history').innerText = recent.length + " (Scanned)";
 
                 recent.forEach(h => { txHeights[h.tx_hash] = h.height; });
 
-                // 4. Group all unique TXIDs to check (UTXO txs + History txs)
+                // Merge IDs (from history + mempool)
                 const allTxIds = [...new Set([
-                    ...utxos.map(u => u.tx_hash),
                     ...recent.map(h => h.tx_hash)
                 ])];
 
-                log(`Total unique transactions to analyze: ${allTxIds.length}`);
+                log(`Analyzing ${allTxIds.length} unique transactions...`);
 
-                // Map: GenesisID (Hex BE) -> Array of contracts
-                let contractsByGenesis = {};
-                let liveCount = 0;
+                let foundInstances = []; // To store { txid, outIdx, instance, genesisId, ... }
                 let foundCount = 0;
 
                 // Process in batches
                 for (let i = 0; i < allTxIds.length; i += 20) {
                     const batch = allTxIds.slice(i, i + 20);
+                    log(`Batch ${i / 20 + 1}: Fetching hex for ${batch.length} txs...`);
                     const hexResults = await fetchBulkHex(batch);
+                    log(`Batch ${i / 20 + 1}: Received ${hexResults.length} hex results.`);
 
                     for (const res of hexResults) {
                         if (!res || !res.hex) continue;
@@ -516,153 +542,259 @@
                                 const instance = GameContract.fromTx(bsvTx, outIdx);
                                 if (!instance) continue;
 
-                                // If fromTx doesn't throw, it matched the code template!
+                                let genesisIdLE = instance.genesisTxId;
+                                let genesisId = "Unknown";
+                                let isDeployment = false;
 
-                                const op = `${res.txid}:${outIdx}`;
-                                const isLive = liveOutpoints.has(op);
-
-                                // Reverse genesisTxId from LE (contract state) to BE (display/standard)
-                                const genesisIdLE = instance.genesisTxId;
-                                const genesisId = genesisIdLE ? reverseHex(genesisIdLE) : "Legacy/Unknown";
-
-                                if (!contractsByGenesis[genesisId]) {
-                                    contractsByGenesis[genesisId] = [];
+                                if (genesisIdLE && genesisIdLE !== "" && genesisIdLE !== "00") {
+                                    genesisId = reverseHex(genesisIdLE);
+                                } else {
+                                    genesisId = res.txid; // Use TXID as Genesis for deployment
+                                    isDeployment = true;
                                 }
 
                                 const height = txHeights[res.txid] || 0;
-                                const isUnconfirmed = height <= 0 || height === undefined;
+                                const isUnconfirmed = height <= 0;
 
                                 // Decode state
-                                // Note: instance properties should be populated
-                                let decoded = null;
-                                if (typeof instance.unpackState === 'function') {
-                                    decoded = instance.unpackState(instance.packedGameState);
-                                } else {
-                                    // Try manual prop access if simple properties exist
-                                    decoded = {
-                                        money: instance.money,
-                                        happiness: instance.happiness,
-                                        education: instance.education
-                                    };
-                                }
+                                let decoded = decodeState(instance);
 
-                                contractsByGenesis[genesisId].push({
+                                foundInstances.push({
                                     txid: res.txid,
                                     outIdx,
-                                    isLive,
                                     genesisId,
-                                    state: instance.packedGameState,
-                                    height: height,
+                                    instance,
+                                    height,
                                     isUnconfirmed,
-                                    decoded // The decoded object
+                                    decoded,
+                                    isDeployment
                                 });
-
-                                if (isLive) liveCount++;
                                 foundCount++;
-                                document.getElementById('stat-found').innerText = foundCount;
-                                document.getElementById('stat-live').innerText = liveCount;
-
                             } catch (e) {
-                                // Not a contract or failed to parse
-                                // If we want to debug, we could log:
-                                // console.log(`Tx ${res.txid} out ${outIdx} failed: ${e.message}`);
+                                // Not a contract - this is expected generally, but let's log weird errors
+                                // log(`Tx ${res.txid} out ${outIdx}: ${e.message}`);
                             }
                         }
                     }
+
+                    document.getElementById('stat-found').innerText = foundCount;
                 }
 
-                // Render results grouped by Genesis
                 if (foundCount === 0) {
-                    log("No contracts found in the searched depth.", "warning");
-                } else {
-                    const genesisKeys = Object.keys(contractsByGenesis);
-                    log(`Found ${genesisKeys.length} unique genesis chains.`);
+                    log("No contracts found.", "warning");
+                    resultsBox.innerHTML = '<div style="padding:20px; text-align:center; color:#ccc">No contracts found in scanned range.</div>';
+                    return;
+                }
 
-                    genesisKeys.forEach(genId => {
-                        const groupDiv = document.createElement('div');
-                        groupDiv.style.marginBottom = '30px';
-                        groupDiv.style.border = '1px solid #334155';
-                        groupDiv.style.borderRadius = '16px';
-                        groupDiv.style.padding = '20px';
-                        groupDiv.style.background = '#1e293b';
+                // ---------------------------------------------
+                // BULK SPENT CHECK
+                // ---------------------------------------------
+                log(`Found ${foundCount} potential contracts.`);
+                log(`Checking spent status for ${foundInstances.length} instances via Bulk API...`);
 
-                        // Sort the chain: Height ASC (oldest first). Unconfirmed at end.
-                        const chain = contractsByGenesis[genId];
-                        chain.sort((a, b) => {
-                            const ha = a.height <= 0 ? Infinity : a.height;
-                            const hb = b.height <= 0 ? Infinity : b.height;
-                            return ha - hb;
+                // We process spent checks in batches of 20
+                for (let i = 0; i < foundInstances.length; i += 20) {
+                    const chunk = foundInstances.slice(i, i + 20);
+                    const payload = chunk.map(inst => ({
+                        txid: inst.txid,
+                        vout: inst.outIdx
+                    }));
+
+                    try {
+                        const resp = await fetch('https://api.whatsonchain.com/v1/bsv/main/utxos/spent', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ utxos: payload })
                         });
+                        const data = await resp.json();
 
-                        const header = document.createElement('h3');
-                        header.style.marginTop = '0';
-                        header.style.color = '#3b82f6';
-                        header.innerHTML = `Genesis: <span style="color:white; font-family:monospace; font-size:0.8em">${genId}</span> <span style="font-size:0.6em; color:#94a3b8">(${chain.length} txs)</span>`;
-                        groupDiv.appendChild(header);
+                        // Map results back to instances
+                        // API returns array in same order? Usually yes.
+                        // Or items with txid/vout.
+                        if (Array.isArray(data)) {
+                            data.forEach(item => {
+                                // Find matching instance in our chunk
+                                // item.utxo.txid, item.utxo.vout
+                                const match = chunk.find(c => c.txid === item.utxo.txid && c.outIdx === item.utxo.vout);
+                                if (match) {
+                                    log(`> Checked ${match.txid.substring(0, 8)}:${match.outIdx} -> ${item.spentIn ? 'SPENT' : 'UNSPENT'}`);
 
-                        const list = document.createElement('div');
-                        list.className = 'results-grid';
-
-                        chain.forEach(c => {
-                            const card = document.createElement('div');
-                            const statusClass = c.isUnconfirmed ? 'warning' : (c.isLive ? 'live' : '');
-                            const borderColor = c.isUnconfirmed ? '#f59e0b' : (c.isLive ? '#10b981' : '#334155');
-
-                            card.className = `contract-card`;
-                            card.style.borderLeftColor = borderColor;
-
-                            let badgeHtml = '';
-                            if (c.isUnconfirmed) {
-                                badgeHtml = `<span class="badge" style="background:rgba(245, 158, 11, 0.2); color:#f59e0b">Unconfirmed</span>`;
-                            } else if (c.isLive) {
-                                badgeHtml = `<span class="badge live">Live Head</span>`;
-                            } else {
-                                badgeHtml = `<span class="badge spent">Spent</span>`;
-                            }
-
-                            // Format decoded state
-                            let detailsHtml = '';
-                            if (c.decoded) {
-                                let itemsHtml = '';
-
-                                // Key fields to show
-                                const keys = ['money', 'happiness', 'hoursLeft', 'foodSupply', 'education', 'career'];
-
-                                // Helper to formatting BigInt
-                                const fmt = (v) => typeof v === 'bigint' ? v.toString() : v;
-
-                                keys.forEach(k => {
-                                    if (c.decoded[k] !== undefined) {
-                                        itemsHtml += `<div class="state-item"><span class="k">${k}</span><span class="v">${fmt(c.decoded[k])}</span></div>`;
+                                    // If 'spentIn' exists, it is spent.
+                                    // If not, it is unspent (Live).
+                                    if (item.spentIn && (item.spentIn.txid || item.spentIn.tx_hash)) {
+                                        match.spentInfo = item.spentIn;
+                                        match.isSpent = true;
+                                    } else {
+                                        match.isSpent = false;
                                     }
-                                });
-
-                                // Add location if present (hex or int)
-                                if (c.decoded.currentLocation) {
-                                    itemsHtml += `<div class="state-item"><span class="k">Location</span><span class="v">${c.decoded.currentLocation}</span></div>`;
                                 }
+                            });
+                        }
+                    } catch (e) {
+                        console.error("Bulk spent check error", e);
+                        log(`Bulk spent check error on batch ${i}: ${e.message}`, 'error');
+                    }
+                }
 
-                                detailsHtml = `<div class="state-details">${itemsHtml}</div>`;
+                log(`Bulk check complete. Processing results...`);
+
+                // ---------------------------------------------
+                // Grouping & Rendering
+                // ---------------------------------------------
+                let contractsByGenesis = {};
+                foundInstances.forEach(inst => {
+                    if (!contractsByGenesis[inst.genesisId]) {
+                        contractsByGenesis[inst.genesisId] = [];
+                    }
+                    contractsByGenesis[inst.genesisId].push(inst);
+                });
+
+                const genesisKeys = Object.keys(contractsByGenesis);
+                log(`Found ${genesisKeys.length} unique game chains.`);
+
+                let liveCount = 0;
+
+                genesisKeys.forEach(genId => {
+                    const chain = contractsByGenesis[genId];
+
+                    // Pre-calculate dependency depth for same-block sorting
+                    // 1. Map TxID -> Instance
+                    const txMap = {};
+                    chain.forEach(c => { c.chainDepth = 0; txMap[c.txid] = c; });
+
+                    // 2. Propagate depth (Iterative approach since chains are short)
+                    // If A is spent by B, and B is in our list, then B.depth = max(B.depth, A.depth + 1)
+                    // We run this loop a few times to propagate
+                    for (let pass = 0; pass < chain.length + 1; pass++) {
+                        let changed = false;
+                        chain.forEach(a => {
+                            if (a.isSpent && a.spentInfo && a.spentInfo.txid) {
+                                const b = txMap[a.spentInfo.txid];
+                                if (b) {
+                                    if (b.chainDepth <= a.chainDepth) {
+                                        b.chainDepth = a.chainDepth + 1;
+                                        changed = true;
+                                    }
+                                }
                             }
-
-                            card.innerHTML = `
-                                ${badgeHtml}
-                                <div class="field"><span class="label">TxID:</span><span class="value">
-                                    <a class="tx-link" href="https://whatsonchain.com/tx/${c.txid}" target="_blank">${c.txid.substring(0, 20)}...</a>
-                                </span> <span class="method-tag">Contract Validated</span></div>
-                                <div class="field"><span class="label">Index:</span><span class="value">${c.outIdx}</span> <span class="label" style="margin-left:10px">Height:</span><span class="value">${c.height > 0 ? c.height : 'Mempool'}</span></div>
-                                ${detailsHtml}
-                                <div style="margin-top:10px; font-size:10px; color:#555; word-break:break-all">State Hex: ${c.state.substring(0, 32)}...</div>
-                            `;
-                            list.appendChild(card);
                         });
+                        if (!changed) break;
+                    }
 
-                        groupDiv.appendChild(list);
-                        resultsBox.appendChild(groupDiv);
+                    // Ensure sorted Newest -> Oldest
+                    chain.sort((a, b) => {
+                        const hA = a.height === 0 ? Infinity : a.height;
+                        const hB = b.height === 0 ? Infinity : b.height;
+
+                        // If heights differ, sort by height descending
+                        if (hA !== hB) return hB - hA;
+
+                        // If heights equal, use calculated Topological Depth
+                        return b.chainDepth - a.chainDepth;
                     });
 
-                    log(`Rendered groups.`);
-                }
+                    // IDENTIFY HEAD
+                    // The first item in the sorted list is the most recent we've seen.
+                    const head = chain[0];
+
+                    // "if not found its last instance we been working with"
+                    // If it is UNSPENT (!isSpent), it means it's the valid Head.
+                    // If it is SPENT, then we might have missed the child, or it's dead.
+
+                    const isHeadUnspent = head && !head.isSpent;
+                    if (isHeadUnspent) liveCount++;
+
+                    // Render Group
+                    const groupDiv = document.createElement('div');
+                    groupDiv.style.marginBottom = '30px';
+                    groupDiv.style.border = '1px solid #334155';
+                    groupDiv.style.borderRadius = '16px';
+                    groupDiv.style.padding = '20px';
+                    groupDiv.style.background = '#1e293b';
+
+                    const titleColor = isHeadUnspent ? '#10b981' : '#3b82f6';
+                    const statusText = isHeadUnspent ? '(Active)' : '(Historic/Moved)';
+
+                    // Show full Genesis ID
+                    groupDiv.innerHTML = `<h3 style="margin-top:0; color:${titleColor}; overflow-wrap:anywhere;">
+                        Game: <span style="color:white; font-family:monospace; font-size:0.8em">${genId}</span> 
+                        <span style="font-size:0.7em; color:#94a3b8">${statusText}</span>
+                    </h3>`;
+
+                    const list = document.createElement('div');
+                    list.className = 'results-grid';
+
+                    chain.forEach((c, idx) => {
+                        const isHead = (idx === 0);
+                        const card = document.createElement('div');
+
+                        // Border logic
+                        let borderColor = '#334155';
+                        if (isHead) {
+                            borderColor = !c.isSpent ? '#10b981' : '#f59e0b';
+                        }
+
+                        card.className = `contract-card`;
+                        card.style.borderLeftColor = borderColor;
+
+                        // Badge
+                        let badgeHtml = '';
+                        if (isHead) {
+                            if (!c.isSpent) {
+                                badgeHtml = `<span class="badge live">LIVE HEAD</span>`;
+                            } else {
+                                // Spent
+                                const spender = c.spentInfo ? c.spentInfo.txid : '?';
+                                badgeHtml = `<span class="badge spent">SPENT BY ${spender.substring(0, 4)}...</span>`;
+                            }
+                        } else {
+                            badgeHtml = `<span class="badge" style="background:#334155; color:#94a3b8">HISTORY</span>`;
+                        }
+
+                        if (c.isUnconfirmed) {
+                            badgeHtml += ` <span class="badge" style="background:rgba(245, 158, 11, 0.2); color:#f59e0b">Mempool</span>`;
+                        }
+
+                        // State Render
+                        let detailsHtml = '';
+                        if (c.decoded) {
+                            let itemsHtml = '';
+                            const keys = ['money', 'happiness', 'hoursLeft', 'foodSupply', 'education', 'career'];
+                            const fmt = (v) => typeof v === 'bigint' ? v.toString() : v;
+                            keys.forEach(k => {
+                                if (c.decoded[k] !== undefined) {
+                                    itemsHtml += `<div class="state-item"><span class="k">${k}</span><span class="v">${fmt(c.decoded[k])}</span></div>`;
+                                }
+                            });
+                            if (c.decoded.currentLocation) {
+                                itemsHtml += `<div class="state-item"><span class="k">Location</span><span class="v">${c.decoded.currentLocation}</span></div>`;
+                            }
+                            detailsHtml = `<div class="state-details">${itemsHtml}</div>`;
+                        }
+
+                        // Spent Field
+                        let spentField = '';
+                        if (c.isSpent && c.spentInfo) {
+                            spentField = `<div class="field"><span class="label" style="color:#ef4444">Spent By:</span><span class="value"><a class="tx-link" href="https://whatsonchain.com/tx/${c.spentInfo.txid}" target="_blank" style="color:#ef4444">${c.spentInfo.txid}</a></span></div>`;
+                        }
+
+                        card.innerHTML = `
+                            ${badgeHtml}
+                            <div class="field"><span class="label">TxID:</span><span class="value">
+                                <a class="tx-link" href="https://whatsonchain.com/tx/${c.txid}" target="_blank">${c.txid}</a>
+                            </span> <span class="method-tag">Contract</span></div>
+                            <div class="field"><span class="label">Index:</span><span class="value">${c.outIdx}</span> <span class="label" style="margin-left:10px">Height:</span><span class="value">${c.height > 0 ? c.height : 'Mempool'}</span></div>
+                            ${spentField}
+                            ${detailsHtml}
+                        `;
+                        list.appendChild(card);
+                    });
+
+                    groupDiv.appendChild(list);
+                    resultsBox.appendChild(groupDiv);
+                });
+
+                document.getElementById('stat-live').innerText = liveCount;
 
             } catch (e) {
                 log(`Error: ${e.message}`, "error");
@@ -672,6 +804,229 @@
                 btn.innerText = "Start scan";
             }
         }
+
+        async function debugScan() {
+            const addr = document.getElementById('address').value.trim();
+            const btn = document.getElementById('btnDebug');
+            const targetTx = "924a0e574ee0be3d640f0d5bc049042640b54202c93b0a9753c23656e0ed008b";
+
+            if (!addr) return alert("Enter address");
+
+            if (!loadedArtifact) {
+                try {
+                    const r = await fetch('Tamagochi_v1.json');
+                    loadedArtifact = await r.json();
+                    log("Auto-loaded Tamagochi_v1.json", "success");
+                } catch (e) {
+                    return alert("Please load an artifact file or Tamagochi_v1.json first!");
+                }
+            }
+
+            btn.disabled = true;
+            btn.innerText = "Scanning Full History...";
+            resultsBox.innerHTML = '';
+
+            // Clear stats
+            document.getElementById('stat-utxos').innerText = '-';
+            document.getElementById('stat-history').innerText = '-';
+            document.getElementById('stat-found').innerText = '-';
+            document.getElementById('stat-live').innerText = '-';
+
+            log("--- FULL HISTORY SCAN STARTED ---", "warning");
+
+            try {
+                const bundle = window.ScryptBundle || {};
+                const GameContract = window.GameContract || bundle.GameContract;
+                const scrypt = window.scrypt || bundle.scrypt;
+
+                if (!GameContract) throw new Error("GameContract class not found.");
+                GameContract.loadArtifact(loadedArtifact);
+
+                // 1. Fetch UTXOs (to determine spent status)
+                log("Fetching current UTXOs...");
+                const utxoResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${addr}/unspent`);
+                const utxos = await utxoResp.json();
+                const unspentSet = new Set(utxos.map(u => `${u.tx_hash}:${u.tx_pos}`));
+                log(`Current UTXOs: ${utxos.length}`);
+
+                // 2. Fetch Full History
+                log("Fetching ALL history...");
+                const histResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${addr}/history`);
+                const history = await histResp.json();
+                // Sort descending (newest first)
+                history.sort((a, b) => (b.height || Infinity) - (a.height || Infinity));
+
+                log(`Fetched ${history.length} transactions in history.`);
+
+                // 2b. Fetch Unconfirmed History (Mempool)
+                log("Fetching Unconfirmed history (Mempool)...");
+                try {
+                    const mempoolResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${addr}/unconfirmed/history`);
+                    const mempool = await mempoolResp.json();
+                    log(`Fetched ${mempool.length} unconfirmed transactions.`);
+
+                    // Merge and deduplicate
+                    const historyTxIds = new Set(history.map(h => h.tx_hash));
+                    mempool.forEach(tx => {
+                        if (!historyTxIds.has(tx.tx_hash)) {
+                            // Normalize structure
+                            history.unshift({
+                                tx_hash: tx.tx_hash,
+                                height: 0 // Mark as unconfirmed
+                            });
+                        }
+                    });
+                } catch (e) {
+                    log("Failed to fetch unconfirmed history: " + e.message, "warning");
+                }
+
+                // 3. Process All Txs (Chunks of 20)
+                const allTxIds = history.map(h => h.tx_hash);
+
+                // If target TX is missing from history (e.g. mempool lag), add it manual
+                if (!allTxIds.includes(targetTx)) {
+                    allTxIds.unshift(targetTx);
+                    log("Target TX added manually to scan list.");
+                }
+
+                // Create Table Structure
+                const table = document.createElement('table');
+                table.style.width = '100%';
+                table.style.borderCollapse = 'collapse';
+                table.style.marginTop = '20px';
+                table.innerHTML = `
+                    <thead>
+                        <tr style="background:#334155; text-align:left;">
+                            <th style="padding:10px;">Link</th>
+                            <th style="padding:10px;">Out 0 Spent?</th>
+                            <th style="padding:10px;">Script Match?</th>
+                            <th style="padding:10px;">Genesis ID</th>
+                            <th style="padding:10px;">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scanTableBody"></tbody>
+                 `;
+                resultsBox.appendChild(table);
+                const tbody = document.getElementById('scanTableBody');
+
+                for (let i = 0; i < allTxIds.length; i += 20) {
+                    const chunk = allTxIds.slice(i, i + 20);
+
+                    // Fetch Tx Data
+                    const hexResults = await fetchBulkHex(chunk);
+
+                    // Bulk Spent Check for this debug chunk
+                    const utxosToCheck = chunk.map(txid => ({ txid, vout: 0 }));
+                    const spentMap = {}; // txid -> bool
+                    try {
+                        const sResp = await fetch('https://api.whatsonchain.com/v1/bsv/main/utxos/spent', {
+                            method: 'POST', body: JSON.stringify({ utxos: utxosToCheck })
+                        });
+                        const sData = await sResp.json();
+                        if (Array.isArray(sData)) {
+                            sData.forEach(item => {
+                                // If spentIn is present, it is spent.
+                                if (item.spentIn && (item.spentIn.txid || item.spentIn.tx_hash)) {
+                                    spentMap[item.utxo.txid] = true;
+                                } else {
+                                    spentMap[item.utxo.txid] = false;
+                                }
+                            });
+                        }
+                    } catch (e) { console.error("Debug spent check fail", e); }
+
+
+                    for (const res of hexResults) {
+                        if (!res || !res.hex) continue;
+
+                        const bsvTx = new scrypt.bsv.Transaction(res.hex);
+                        const txid = res.txid;
+
+                        // Check Output 0
+                        const outIdx = 0;
+
+                        // Use the bulk check result
+                        const isSpent = spentMap[txid] === true;
+
+                        let scriptMatch = false;
+                        let genesisId = "-";
+                        let details = "";
+                        let rowColor = "transparent";
+
+                        try {
+                            const instance = GameContract.fromTx(bsvTx, outIdx);
+                            scriptMatch = true;
+                            const g = instance.genesisTxId;
+                            genesisId = g ? reverseHex(g) : "None";
+                            details = "Valid Contract";
+
+                            // Calculate Script Hash for WoC link
+                            // Electrum/WoC use SHA256 of ScriptPubKey, Little Endian (Reversed)
+                            const scriptHex = instance.lockingScript.toHex();
+                            const scriptBuf = scrypt.bsv.deps.Buffer.from(scriptHex, 'hex');
+                            const scriptHashLE = scrypt.bsv.crypto.Hash.sha256(scriptBuf).reverse().toString('hex');
+
+                            // Try decode
+                            try {
+                                if (instance.unpackState) {
+                                    const st = instance.unpackState(instance.packedGameState);
+                                    details = `Money: ${st.money}, Hap: ${st.happiness}`;
+                                }
+                            } catch (e) { }
+
+                            details += ` <br><a href="https://api.whatsonchain.com/v1/bsv/main/script/${scriptHashLE}/history" target="_blank" style="font-size:0.8em; color:#60a5fa">[Script Hash]</a>`;
+
+                        } catch (e) {
+                            scriptMatch = false;
+                            details = e.message;
+                            // If it's the target tx, highlight the error
+                            if (txid === targetTx) {
+                                rowColor = "rgba(239, 68, 68, 0.1)";
+                                details = `<span style="color:#ef4444">${e.message}</span>`;
+                            }
+                        }
+
+                        const tr = document.createElement('tr');
+                        tr.style.background = rowColor;
+                        tr.style.borderBottom = "1px solid #333";
+
+                        // Style helpers
+                        const spentTag = isSpent
+                            ? `<span style="color:#f59e0b">YES (Spent)</span>`
+                            : `<span style="color:#10b981; font-weight:bold">NO (Unspent)</span>`;
+
+                        const matchTag = scriptMatch
+                            ? `<span style="color:#10b981">YES</span>`
+                            : `<span style="color:#64748b">NO</span>`;
+
+                        tr.innerHTML = `
+                            <td style="padding:8px; font-family:monospace;">
+                                <a href="https://whatsonchain.com/tx/${txid}" target="_blank" style="color:#3b82f6; text-decoration:none;">
+                                    ${txid.substring(0, 8)}...
+                                </a>
+                            </td>
+                            <td style="padding:8px;">${spentTag}</td>
+                            <td style="padding:8px;">${matchTag}</td>
+                            <td style="padding:8px; font-family:monospace;">${genesisId.substring(0, 10)}...</td>
+                            <td style="padding:8px; font-size:0.85em; color:#ccc;">${details}</td>
+                         `;
+                        tbody.appendChild(tr);
+                    }
+                    // Small delay to let UI render if list is huge
+                    if (i % 100 === 0) await new Promise(r => setTimeout(r, 10));
+                }
+
+                log(`Full history scan complete.`);
+            } catch (e) {
+                log(`ERROR: ${e.message}`, "error");
+                console.error(e);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Full History Scan";
+                log("--- SCAN END ---");
+            }
+        }
+
     </script>
 </body>
 

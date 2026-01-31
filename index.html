@@ -812,12 +812,19 @@
                     <ul id="historyList" style="max-height: 150px; overflow-y: auto; padding-left: 20px;">
                         <!-- History items -->
                     </ul>
-                    <div style="display: flex; gap: 10px;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                         <button onclick="clearHistory()"
                             style="background: #dc3545; font-size: 0.8rem; padding: 5px 10px;">Clear History</button>
                         <button id="btnScan" onclick="scanForContracts()"
                             style="background: #17a2b8; font-size: 0.8rem; padding: 5px 10px;">Scan Wallet for
                             Games</button>
+                    </div>
+                    <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px; font-size: 0.85em;">
+                        <label for="scanDepth" style="margin:0;">Depth:</label>
+                        <input type="range" id="scanDepth" min="20" max="3000" step="20" value="100"
+                            style="flex:1; cursor:pointer;"
+                            oninput="document.getElementById('scanDepthVal').innerText = this.value">
+                        <span id="scanDepthVal" style="min-width: 30px; text-align:right;">100</span>
                     </div>
                 </div>
 
@@ -1260,31 +1267,25 @@
                 };
             }
         }
-        function saveToHistory(txId, deploymentId = null) {
+        function saveToHistory(headTxId, deploymentId, txCount, stats, chainData) {
             let history = JSON.parse(localStorage.getItem('scrypt_history_v2') || '[]');
 
-            // If deploymentId is provided, update that game's latest tx
-            // If not, try to find existing entry for this tx flow?
-
+            // Remove existing entry for this deployment/genesis to update it
             if (deploymentId) {
-                // Remove existing for this deployment
                 history = history.filter(h => h.deploymentId !== deploymentId);
-                // Add new head
-                history.unshift({
-                    txId: txId,
-                    deploymentId: deploymentId,
-                    timestamp: new Date().getTime()
-                });
             } else {
-                // Simple add if no deployment ID known (fallback)
-                if (!history.find(h => h.txId === txId)) {
-                    history.unshift({
-                        txId: txId,
-                        deploymentId: txId, // Assume self-deployed
-                        timestamp: new Date().getTime()
-                    });
-                }
+                history = history.filter(h => h.txId !== headTxId);
             }
+
+            // Unshift new head
+            history.unshift({
+                txId: headTxId,
+                deploymentId: deploymentId || headTxId,
+                timestamp: new Date().getTime(),
+                txCount: txCount || 1,
+                stats: stats || {},
+                chain: chainData || [] // Store full chain extract
+            });
 
             if (history.length > 20) history.pop(); // Keep last 20 games
             localStorage.setItem('scrypt_history_v2', JSON.stringify(history));
@@ -1328,18 +1329,40 @@
                 }
 
                 li.innerHTML = `
-                    <div style="line-height:1.2;">
-                        ${label}
-                        <span title="${date}" style="${isCurrent ? 'color:green; font-weight:bold;' : ''}">${shortId}</span> 
+                    <div style="line-height:1.2; width:100%">
+                        <div style="display:flex; justify-content:space-between; align-items:center">
+                            <div>
+                                ${label}
+                                <span title="${date}" style="${isCurrent ? 'color:green; font-weight:bold;' : ''}">${shortId}</span> 
+                                <span style="font-size:0.8em; color:#666">(${item.txCount || 1} txs)</span>
+                            </div>
+                            <div>
+                                <button onclick="loadContract('${item.txId}', '${item.deploymentId}')" style="padding: 2px 5px; font-size: 0.8em; cursor:pointer;">${isCurrent ? 'Active' : 'Load'}</button>
+                                <a href="https://whatsonchain.com/tx/${item.txId}" target="_blank" style="margin-left: 5px; font-size: 0.8em;">🔍</a>
+                                <button onclick="toggleDetails('${item.txId}')" style="padding: 2px 5px; font-size: 0.8em; cursor:pointer; margin-left:5px">⬇️</button>
+                            </div>
+                        </div>
                         ${subLabel}
-                    </div>
-                    <div>
-                        <button onclick="loadContract('${item.txId}', '${item.deploymentId}')" style="padding: 2px 5px; font-size: 0.8em; cursor:pointer;">${isCurrent ? 'Active' : 'Load'}</button>
-                        <a href="https://whatsonchain.com/tx/${item.txId}" target="_blank" style="margin-left: 5px; font-size: 0.8em;">🔍</a>
+                        <div style="font-size:0.75em; color:#888; margin-top:2px;">
+                            ${item.stats ? `Happiness: ${item.stats.happiness} | Money: ${item.stats.money}` : ''}
+                        </div>
+                        <div id="details-${item.txId}" style="display:none; margin-top:5px; padding:5px; background:rgba(0,0,0,0.05); border-radius:4px;">
+                            ${(item.chain || []).map(c => `
+                                <div style="font-size:0.7em; margin-bottom:3px; display:flex; justify-content:space-between; ${c.txid === item.txId ? 'font-weight:bold; color:green' : ''}">
+                                    <span>${c.txid.substring(0, 8)}...</span>
+                                    <span>${c.stats ? `H:${c.stats.happiness} M:${c.stats.money}` : ''}</span>
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
                 `;
                 list.appendChild(li);
             });
+        }
+
+        window.toggleDetails = function (id) {
+            const el = document.getElementById(`details-${id}`);
+            if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
         }
 
         function clearHistory() {
@@ -1819,6 +1842,24 @@
                 // Actually signer.getBalance is usually there.
 
                 log(`Wallet initialized. Address: ${address}`);
+
+                // --- UTXO PROTECTION FIX ---
+                // Override listUnspent to hide the Game Contract UTXO from the naive TestWallet coin selection
+                const originalListUnspent = provider.listUnspent.bind(provider);
+                provider.listUnspent = async (addr, options) => {
+                    const utxos = await originalListUnspent(addr, options);
+                    if (currentTxId) {
+                        // If we have a known active game contract, filter it out
+                        // This prevents the wallet from spending our game state as "dust" for fee inputs
+                        const protectedUtxos = utxos.filter(u => u.tx_hash !== currentTxId);
+                        if (protectedUtxos.length < utxos.length) {
+                            console.log(`[Wallet] Protected ${utxos.length - protectedUtxos.length} contract UTXOs from coin selection.`);
+                        }
+                        return protectedUtxos;
+                    }
+                    return utxos;
+                };
+                // ---------------------------
                 // log(`Balance: ${bal.confirmed + bal.unconfirmed} sats`);
 
                 document.getElementById('walletStatus').textContent = `Connected: ${address}`;
@@ -3356,6 +3397,22 @@
             return hex.match(/../g).reverse().join('');
         };
 
+        // Helper to interpret state
+        function decodeState(instance) {
+            try {
+                if (instance.unpackState && instance.packedGameState) {
+                    return instance.unpackState(instance.packedGameState);
+                }
+                const parsed = {};
+                if (instance.money !== undefined) parsed.money = instance.money;
+                if (instance.happiness !== undefined) parsed.happiness = instance.happiness;
+                if (Object.keys(parsed).length === 0) return null;
+                return parsed;
+            } catch (e) {
+                return null;
+            }
+        }
+
         async function scanForContracts() {
             if (!signer) return alert("Connect wallet first!");
             const btn = document.getElementById('btnScan');
@@ -3366,172 +3423,195 @@
 
             try {
                 const address = await signer.getDefaultAddress();
-                log(`Ultra Scan initiated for: ${address}`);
+                log(`Deep Scan initiated for: ${address}`);
 
-                // 1. Fetch ALL UTXOs (Fast way to find LIVE state)
-                const utxoResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${address}/unspent`);
-                const utxos = await utxoResp.json();
-                const liveOutpoints = new Set(utxos.map(u => `${u.tx_hash}:${u.tx_pos}`));
+                // 1. Fetch History (Reliable GET)
+                const histResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${address}/history`);
+                const history = await histResp.json();
 
-                // Map txid to height for sorting
+                // 2. Fetch Mempool
+                try {
+                    const memResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${address}/unconfirmed/history`);
+                    const memData = await memResp.json();
+                    let mempool = [];
+                    if (Array.isArray(memData)) mempool = memData;
+                    else if (memData && Array.isArray(memData.result)) mempool = memData.result;
+
+                    if (mempool.length > 0) {
+                        mempool.forEach(tx => history.unshift({ tx_hash: tx.tx_hash, height: 0 }));
+                    }
+                } catch (e) { console.warn("Mempool fetch skipped", e); }
+
+                // Unique TXs
+
+                // Sort descending (Newest first)
+                history.sort((a, b) => {
+                    const hA = a.height === 0 ? Infinity : a.height;
+                    const hB = b.height === 0 ? Infinity : b.height;
+                    return hB - hA;
+                });
+
+                // Apply Depth Limit
+                const depthEl = document.getElementById('scanDepth');
+                const depth = depthEl ? parseInt(depthEl.value) : 100;
+
+                const recentHistory = history.slice(0, depth);
+                const allTxIds = [...new Set(recentHistory.map(h => h.tx_hash))];
                 const txHeights = {};
-                utxos.forEach(u => { txHeights[u.tx_hash] = u.height; });
+                history.forEach(h => txHeights[h.tx_hash] = h.height);
 
-                log(`Found ${utxos.length} UTXOs. Checking for live contracts...`);
+                log(`Scanning ${allTxIds.length} recent transactions (Limit: ${depth})...`);
 
-                const candidates = {}; // map: groupKey -> array of {instance, txId, outIdx, isLive, height}
-                let scanIndexCounter = 0;
+                let foundInstances = [];
 
-                // Shared Processor
-                const processTxResult = (txId, txHex, height = 0) => {
-                    try {
-                        const bsvTx = new scrypt.bsv.Transaction(txHex);
+                // 3. Batch Fetch Hex & Identify
+                for (let i = 0; i < allTxIds.length; i += 20) {
+                    const batch = allTxIds.slice(i, i + 20);
+                    const results = await fetchBulkTxHex(batch); // Assumes fetchBulkTxHex exists or uses local helper
+
+                    for (const res of results) {
+                        if (!res || !res.hex) continue;
+                        const bsvTx = new scrypt.bsv.Transaction(res.hex);
                         for (let outIdx = 0; outIdx < bsvTx.outputs.length; outIdx++) {
-                            const outpoint = `${txId}:${outIdx}`;
-
                             try {
                                 const instance = GameContract.fromTx(bsvTx, outIdx);
                                 if (!instance) continue;
 
-                                let groupKey = "Legacy_Unknown";
-                                let isGenesis = false;
-
+                                let genesisId = "Unknown";
                                 if (instance.genesisTxId && instance.genesisTxId.length > 0) {
-                                    // Reverse LE to BE for standard display/grouping
-                                    groupKey = reverseHex(instance.genesisTxId);
-                                    isGenesis = true;
-                                } else if (instance.gl_genesisTxId) {
-                                    groupKey = reverseHex(instance.gl_genesisTxId);
-                                    isGenesis = true;
+                                    genesisId = reverseHex(instance.genesisTxId);
                                 } else {
-                                    // Fallback
-                                    const seed = instance.FACTORY_ADDRESS || "unknown";
-                                    groupKey = seed + "_Legacy";
+                                    genesisId = res.txid; // Deployment
                                 }
 
-                                const isLive = liveOutpoints.has(outpoint);
+                                const height = txHeights[res.txid] || 0;
+                                const decoded = decodeState(instance);
 
-                                if (!candidates[groupKey]) candidates[groupKey] = [];
-                                candidates[groupKey].push({
-                                    txId,
+                                foundInstances.push({
+                                    txid: res.txid,
                                     outIdx,
-                                    isLive,
-                                    height,
-                                    isGenesis,
+                                    genesisId,
                                     instance,
-                                    scanIndex: scanIndexCounter++
+                                    height,
+                                    decoded
                                 });
 
-                            } catch (e) { } // Not a contract
+                            } catch (e) { }
                         }
-                    } catch (e) { console.warn(e); }
-                };
+                    }
+                }
 
-                // 2. Process UTXOs first (Sort so Newest/Unconfirmed are processed first)
-                // We want Mempool (height=0/null) > High Block > Low Block
-                utxos.sort((a, b) => {
-                    const hA = (a.height <= 0) ? Infinity : a.height;
-                    const hB = (b.height <= 0) ? Infinity : b.height;
-                    if (hA !== hB) return hB - hA; // Infinity > 1000
-                    return 0;
+                if (foundInstances.length === 0) {
+                    log("No contracts found.");
+                    return;
+                }
+
+                // 4. Batch Check Spent Status
+                log(`Checking spent status for ${foundInstances.length} instances...`);
+                for (let i = 0; i < foundInstances.length; i += 20) {
+                    const chunk = foundInstances.slice(i, i + 20);
+                    const payload = chunk.map(inst => ({
+                        txid: inst.txid,
+                        vout: inst.outIdx
+                    }));
+
+                    try {
+                        const resp = await fetch('https://api.whatsonchain.com/v1/bsv/main/utxos/spent', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ utxos: payload })
+                        });
+                        const data = await resp.json();
+
+                        if (Array.isArray(data)) {
+                            data.forEach(item => {
+                                const match = chunk.find(c => c.txid === item.utxo.txid && c.outIdx === item.utxo.vout);
+                                if (match) {
+                                    // log(`> Checked ${match.txid.substring(0, 8)} -> ${item.spentIn ? 'SPENT' : 'UNSPENT'}`);
+                                    if (item.spentIn && (item.spentIn.txid || item.spentIn.tx_hash)) {
+                                        match.spentInfo = item.spentIn;
+                                        match.isSpent = true;
+                                    } else {
+                                        match.isSpent = false;
+                                    }
+                                }
+                            });
+                        }
+                    } catch (e) {
+                        console.error("Bulk spent check error", e);
+                        log(`Bulk spent check error on batch ${i}: ${e.message}`, 'error');
+                    }
+                }
+
+                // 5. Group & Sort
+                const groups = {};
+                foundInstances.forEach(inst => {
+                    if (!groups[inst.genesisId]) groups[inst.genesisId] = [];
+                    groups[inst.genesisId].push(inst);
                 });
 
-                const utxoTxIds = [...new Set(utxos.map(u => u.tx_hash))];
-                for (let i = 0; i < utxoTxIds.length; i += 20) {
-                    const batch = utxoTxIds.slice(i, i + 20);
-                    const results = await fetchBulkTxHex(batch);
-                    for (const res of results) {
-                        if (res && res.hex) processTxResult(res.txid, res.hex, txHeights[res.txid] || 0);
-                    }
-                }
+                Object.keys(groups).forEach(genId => {
+                    const chain = groups[genId];
+                    log(`Group ${genId.substring(0, 8)}... has ${chain.length} candidates.`);
 
-                // 3. Scan History for fallback/completeness (Deep scan)
-                log(`Deep scanning history for context...`);
-                const histResp = await fetch(`https://api.whatsonchain.com/v1/bsv/main/address/${address}/history`);
-                const history = await histResp.json();
+                    // Topological Sort
+                    const txMap = {};
+                    chain.forEach(c => { c.chainDepth = 0; txMap[c.txid] = c; });
 
-                // Add history heights
-                history.forEach(h => { txHeights[h.tx_hash] = h.height; });
-
-                const limit = 200;
-                const recent = history.slice(0, limit);
-                const histTxIds = [...new Set(recent.map(h => h.tx_hash))].filter(txid => !utxoTxIds.includes(txid)); // Avoid dupes
-
-                log(`Scanning ${histTxIds.length} recent history txs...`);
-
-                for (let i = 0; i < histTxIds.length; i += 20) {
-                    const batch = histTxIds.slice(i, i + 20);
-                    const results = await fetchBulkTxHex(batch);
-                    for (const res of results) {
-                        if (res && res.hex) processTxResult(res.txid, res.hex, txHeights[res.txid] || 0);
-                    }
-                }
-
-                // 4. Process Candidates and Save Best
-                const groups = Object.keys(candidates);
-                log(`Analysis Complete. Found ${groups.length} unique game instances.`);
-
-                groups.forEach(groupKey => {
-                    const group = candidates[groupKey];
-
-                    // Debug grouping
-                    if (group.length > 1) {
-                        console.log(`[ScanSort] Group ${groupKey} has ${group.length} candidates.`);
-                        group.forEach(c => {
-                            console.log(` - Tx: ${c.txId.substring(0, 8)} | Height: ${c.height} | Live: ${c.isLive} | Idx: ${c.scanIndex}`);
+                    for (let pass = 0; pass < chain.length + 1; pass++) {
+                        let changed = false;
+                        chain.forEach(a => {
+                            if (a.isSpent && a.spentInfo && a.spentInfo.txid) {
+                                const b = txMap[a.spentInfo.txid];
+                                if (b) {
+                                    if (b.chainDepth <= a.chainDepth) {
+                                        b.chainDepth = a.chainDepth + 1;
+                                        changed = true;
+                                    }
+                                }
+                            }
                         });
+                        if (!changed) break;
                     }
 
-                    group.sort((a, b) => {
-                        // Sort Priorities:
-                        // 1. Unconfirmed (Infinity) > Confirmed
-                        // 2. Higher Height > Lower Height
-                        // 3. Live > Spent
-                        // 4. Index Tiebreaker:
-                        //    - Unconfirmed: Ascending (0 is Newest/Tip due to UTXO sort)
-                        //    - Confirmed: Descending (Higher is Newest/Child due to block topology)
+                    chain.sort((a, b) => {
+                        const hA = a.height === 0 ? Infinity : a.height;
+                        const hB = b.height === 0 ? Infinity : b.height;
 
-                        // Height logic: Unconfirmed (<=0) is "Infinity" effectively for newness
-                        const hA = (a.height <= 0) ? Infinity : a.height;
-                        const hB = (b.height <= 0) ? Infinity : b.height;
+                        // 1. Block Height
+                        if (hA !== hB) return hB - hA;
 
-                        if (hA !== hB) return hB - hA; // Descending Height
-
-                        // Tie-Breaking for SAME Height (Same Block or Both Unconfirmed):
-
-                        // 1. Liveness Check (Live > Spent)
-                        if (a.isLive !== b.isLive) return a.isLive ? -1 : 1;
-
-                        // 2. Scan Index Strategy
-                        if (hA === Infinity) {
-                            // Unconfirmed (Mempool)
-                            // We explicitly sorted UTXOs Newest-First.
-                            // So Low Index (0) = Newest.
-                            return a.scanIndex - b.scanIndex;
-                        } else {
-                            // Confirmed (History in Block)
-                            // Block transactions are usually ordered topologically (Parent -> Child).
-                            // So Higher Index = Newer State.
-                            return b.scanIndex - a.scanIndex;
-                        }
+                        // 2. Topological Depth (Newer children have higher depth)
+                        return b.chainDepth - a.chainDepth;
                     });
 
-                    if (group.length > 1) {
-                        const winner = group[0];
-                        console.log(`[ScanSort] Winner: ${winner.txId.substring(0, 8)}`);
-                    }
+                    // Debug Top 3 sorting
+                    // chain.slice(0,3).forEach((c, idx) => {
+                    //    log(` #${idx+1} [${c.isSpent?'SPENT':'LIVE'}] H:${c.height} D:${c.chainDepth} Tx:${c.txid.substring(0,6)}`);
+                    // });
 
-                    const best = group[0];
-                    const label = best.isGenesis ? `Genesis: ${groupKey.substring(0, 8)}...` : `Legacy Game`;
+                    // Head is chain[0]
+                    const head = chain[0];
+                    const count = chain.length;
 
-                    const statusStr = (best.height <= 0) ? "UNCONFIRMED" : (best.isLive ? "LIVE" : "HISTORY");
-                    log(`[${statusStr}] Saving ${label} -> Head: ${best.txId.substring(0, 8)}...`);
+                    // Prepare data for save
+                    // We only save basic stats to history for lightweight storage
+                    // Format chain for storage (minimal)
+                    const chainData = chain.map(c => ({
+                        txid: c.txid,
+                        stats: c.decoded ? { happiness: c.decoded.happiness, money: c.decoded.money } : null,
+                        isSpent: c.isSpent
+                    }));
 
-                    // Save to history with Group Key (Deployment ID)
-                    saveToHistory(best.txId, groupKey);
+                    const headStats = head.decoded ? { happiness: head.decoded.happiness, money: head.decoded.money } : {};
+
+                    const statusStr = head.isSpent ? "❌ HEAD SPENT" : "✅ HEAD LIVE";
+                    log(`Saving Game: ${genId.substring(0, 8)}... -> ${statusStr} (${head.txid.substring(0, 8)}...)`);
+
+                    saveToHistory(head.txid, genId, count, headStats, chainData);
                 });
 
-                log("History updated via Ultra Scan.");
+                log("Scan complete. History updated.");
 
             } catch (e) {
                 log(`Scan Error: ${e.message}`, "error");
