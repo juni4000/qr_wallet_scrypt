@@ -3194,7 +3194,42 @@
                 currentTxId = tx.id;
                 document.getElementById('contractId').textContent = currentTxId;
 
-                saveToHistory(currentTxId, currentDeploymentId);
+                document.getElementById('contractId').textContent = currentTxId;
+
+                // Update History robustly
+                // 1. Fetch existing entry to preserve chain/count if possible
+                let history = JSON.parse(localStorage.getItem('scrypt_history_v2') || '[]');
+                let existing = history.find(h => h.deploymentId === currentDeploymentId);
+
+                let newCount = 1;
+                let prevChain = [];
+                let newStats = {}; // We could decode nextInstance state here if needed
+
+                // Decode new state for stats
+                try {
+                    if (nextInstance.unpackState && nextInstance.packedGameState) {
+                        const s = nextInstance.unpackState(nextInstance.packedGameState);
+                        console.log("Next instance state", s);
+                        newStats = { happiness: s.happiness, money: s.money };
+                    }
+                } catch (e) { }
+
+                if (existing) {
+                    newCount = (existing.txCount || 0) + 1;
+                    prevChain = existing.chain || [];
+                    // Prepend new tx to chain
+                    prevChain.unshift({
+                        txid: currentTxId,
+                        stats: newStats,
+                        isSpent: false // New head is definitely unspent initially
+                    });
+                    // Mark old head as spent
+                    if (prevChain.length > 1) prevChain[1].isSpent = true;
+                    if (prevChain.length > 50) prevChain = prevChain.slice(0, 50);
+                }
+
+                saveToHistory(currentTxId, currentDeploymentId, newCount, newStats, prevChain);
+
                 // Clear queue
                 actionQueue = [];
                 renderQueue();
